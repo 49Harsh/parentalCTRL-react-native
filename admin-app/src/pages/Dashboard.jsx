@@ -6,7 +6,9 @@ export default function Dashboard({user, onLogout}) {
   const [devices, setDevices] = useState([]); const [name, setName] = useState(''); const [error, setError] = useState('');
   const navigate = useNavigate();
   const load = () => listDevices().then(data => setDevices(data.devices)).catch(err => setError(err.message));
-  useEffect(load, []);
+  useEffect(() => {
+    void load();
+  }, []);
   const enroll = async event => {event.preventDefault(); try {await enrollDevice(name); setName(''); load();} catch (err) {setError(err.message);}};
   return <main className="min-h-screen bg-slate-50">
     <header className="bg-white border-b border-slate-200"><div className="max-w-6xl mx-auto p-5 flex justify-between items-center"><div><div className="font-bold text-indigo-600">FamilyGuard</div><div className="text-sm text-slate-500">Signed in as {user?.name}</div></div><button onClick={onLogout} className="rounded-lg border px-4 py-2">Log out</button></div></header>
