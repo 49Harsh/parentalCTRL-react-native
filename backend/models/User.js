@@ -25,6 +25,15 @@ const userSchema = new mongoose.Schema({
     unique: true,
     length: 10
   },
+  role: {
+    type: String,
+    enum: ['parent', 'device'],
+    default: 'parent'
+  },
+  tokenVersion: {
+    type: Number,
+    default: 0
+  },
   isActive: {
     type: Boolean,
     default: true

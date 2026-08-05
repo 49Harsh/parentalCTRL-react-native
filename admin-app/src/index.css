@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+@layer components {
+  .field { @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-3 mb-4 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100; }
+  .panel { @apply rounded-3xl border border-slate-200 bg-white p-6 shadow-sm; }
+  .panel h2 { @apply text-xl font-bold text-slate-900 mb-5; }
+  .toggle { @apply flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm; }
+  .chip { @apply rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-800 hover:bg-indigo-100; }
+  .note { @apply mt-5 rounded-xl bg-amber-50 p-3 text-sm text-amber-900; }
+  .row { @apply flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 text-sm; }
+  .row span { @apply text-slate-500; }
+  .empty { @apply text-slate-500; }
+}

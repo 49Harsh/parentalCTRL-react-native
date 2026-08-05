@@ -54,7 +54,8 @@ const register = async (req, res) => {
       { 
         userId: user._id,
         email: user.email,
-        uniqueId: user.uniqueId
+        uniqueId: user.uniqueId,
+        tokenVersion: user.tokenVersion
       },
       process.env.JWT_SECRET,
       { expiresIn: '30d' }
@@ -67,7 +68,8 @@ const register = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        uniqueId: user.uniqueId
+        uniqueId: user.uniqueId,
+        role: user.role
       },
       token
     });
@@ -128,7 +130,8 @@ const login = async (req, res) => {
       { 
         userId: user._id,
         email: user.email,
-        uniqueId: user.uniqueId
+        uniqueId: user.uniqueId,
+        tokenVersion: user.tokenVersion
       },
       process.env.JWT_SECRET,
       { expiresIn: '30d' }
@@ -141,7 +144,8 @@ const login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        uniqueId: user.uniqueId
+        uniqueId: user.uniqueId,
+        role: user.role
       },
       token
     });
@@ -156,7 +160,27 @@ const login = async (req, res) => {
   }
 };
 
+const me = async (req, res) => {
+  res.json({
+    success: true,
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role,
+    },
+  });
+};
+
+const logout = async (req, res) => {
+  req.user.tokenVersion += 1;
+  await req.user.save();
+  res.json({success: true, message: 'Logged out from all sessions'});
+};
+
 module.exports = {
   register,
-  login
+  login,
+  me,
+  logout
 };

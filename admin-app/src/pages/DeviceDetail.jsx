@@ -1,0 +1,25 @@
+import {useEffect, useState} from 'react';
+import {useNavigate, useParams} from 'react-router-dom';
+import {getCommands, getDevice, getLocations, getUsage, revokeDevice, sendCommand, updateDevice, updatePolicy} from '../services/api';
+
+export default function DeviceDetail() {
+  const {deviceId} = useParams(); const navigate = useNavigate();
+  const [data, setData] = useState(null); const [locations, setLocations] = useState([]); const [usage, setUsage] = useState([]); const [commands, setCommands] = useState([]); const [error, setError] = useState('');
+  const load = async () => {try {const [device, loc, use, cmd] = await Promise.all([getDevice(deviceId), getLocations(deviceId), getUsage(deviceId), getCommands(deviceId)]); setData(device); setLocations(loc.locations); setUsage(use.usage); setCommands(cmd.commands);} catch (err) {setError(err.message);}};
+  useEffect(() => {load();}, [deviceId]);
+  if (!data) return <main className="min-h-screen grid place-items-center bg-slate-50">{error || 'Loading device…'}</main>;
+  const {device, policy} = data;
+  const patchPolicy = async patch => {await updatePolicy(deviceId, patch); load();};
+  return <main className="min-h-screen bg-slate-50"><div className="max-w-6xl mx-auto p-5 md:p-8">
+    <button onClick={() => navigate('/')} className="text-indigo-700 mb-5">← All devices</button>
+    <div className="flex flex-col md:flex-row justify-between gap-4"><div><h1 className="text-3xl font-bold">{device.name}</h1><p className="font-mono text-indigo-600 mt-1">{device.uniqueId}</p></div><div className="flex gap-2"><button onClick={async () => {await updateDevice(deviceId, {monitoringEnabled: !device.monitoringEnabled}); load();}} className="rounded-xl bg-indigo-600 text-white px-4">{device.monitoringEnabled ? 'Disable monitoring' : 'Enable monitoring'}</button><button onClick={() => navigate(`/stream/${deviceId}`, {state: {userName: device.name}})} className="rounded-xl border px-4">Open live view</button></div></div>
+    <div className="grid lg:grid-cols-2 gap-5 mt-8">
+      <section className="panel"><h2>Screen-time policy</h2><label>Daily limit (minutes)<input className="field mt-2" type="number" min="0" max="1440" defaultValue={policy?.dailyLimitMinutes} onBlur={e => patchPolicy({dailyLimitMinutes: Number(e.target.value)})}/></label><div className="grid grid-cols-2 gap-3"><label className="toggle"><input type="checkbox" checked={!!policy?.locationSharing} onChange={e => patchPolicy({locationSharing: e.target.checked})}/> Location sharing</label><label className="toggle"><input type="checkbox" checked={!!policy?.usageSharing} onChange={e => patchPolicy({usageSharing: e.target.checked})}/> Usage sharing</label></div><p className="note">Blocking is available only in Android managed-device deployments. Standard installs use reminders and safety alerts.</p></section>
+      <section className="panel"><h2>Safe remote actions</h2><div className="flex flex-wrap gap-2">{['STATUS_REFRESH','RING','LOCATION_REFRESH','LIVE_SESSION_REQUEST','SYNC_POLICY','END_SESSION'].map(type => <button key={type} onClick={async () => {await sendCommand(deviceId, type); load();}} className="chip">{type.replaceAll('_',' ')}</button>)}</div><p className="note">Live camera, microphone and screen sessions require a visible approval on the device.</p></section>
+      <section className="panel"><h2>Recent location</h2>{locations.length ? locations.slice(0, 5).map(item => <div key={item._id} className="row">{item.latitude.toFixed(5)}, {item.longitude.toFixed(5)} <span>{new Date(item.capturedAt).toLocaleString()}</span></div>) : <p className="empty">No consented location data.</p>}</section>
+      <section className="panel"><h2>App usage</h2>{usage.length ? usage.slice(0, 7).map(item => <div key={item._id} className="row">{item.date}<b>{item.totalMinutes} min</b></div>) : <p className="empty">No usage summaries.</p>}</section>
+      <section className="panel lg:col-span-2"><h2>Command audit</h2>{commands.length ? commands.map(item => <div key={item._id} className="row"><span>{item.type.replaceAll('_',' ')}</span><b>{item.status}</b><span>{new Date(item.createdAt).toLocaleString()}</span></div>) : <p className="empty">No commands sent.</p>}</section>
+    </div>
+    <button onClick={async () => {if (confirm('Revoke this device?')) {await revokeDevice(deviceId); navigate('/');}}} className="mt-8 text-red-700">Revoke device access</button>
+  </div></main>;
+}

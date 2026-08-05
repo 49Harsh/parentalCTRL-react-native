@@ -13,7 +13,6 @@ export const requestPermissions = async () => {
     const permissions = [
       PermissionsAndroid.PERMISSIONS.CAMERA,
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
     ];
 
     // Request Android 13+ notification permission if available
@@ -58,11 +57,7 @@ export const checkPermissions = async () => {
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
     );
 
-    const contactsGranted = await PermissionsAndroid.check(
-      PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
-    );
-
-    return cameraGranted && audioGranted && contactsGranted;
+    return cameraGranted && audioGranted;
   } catch (error) {
     console.error('Error checking permissions:', error);
     return false;

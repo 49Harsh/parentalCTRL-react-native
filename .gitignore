@@ -19,6 +19,7 @@
 **/.env.test.local
 **/.env.production.local
 **/.env.*
+!**/.env.example
 
 # Logs
 **/npm-debug.log*
@@ -31,22 +32,42 @@
 **/.expo-shared
 **/android/app/debug
 **/android/app/release
+**/android/.gradle/
+**/android/build/
+**/android/local.properties
+**/android/.cxx/
+**/android/captures/
+**/android/*.iml
 **/*.apk
 **/*.aab
+**/*.keystore
+!**/debug.keystore
 **/*.hprof
 **/ios/Pods/
+**/ios/build/
+**/ios/Podfile.lock
+**/ios/DerivedData/
 **/*.pbxuser
 **/*.mode1v3
 **/*.mode2v3
 **/*.perspectivev3
 **/*.xcuserstate
 **/project.xcworkspace/
+**/xcuserdata/
 **/*.jks
 **/*.p8
 **/*.p12
 **/*.key
 **/*.mobileprovision
 **/*.orig.*
+**/*.ipa
+**/*.dSYM.zip
+**/*.dSYM
+
+# Metro bundler cache
+**/.metro-health-check*
+**/react-native-packager-cache-*
+**/.haste-map-*
 
 # IDE specific
 **/.idea

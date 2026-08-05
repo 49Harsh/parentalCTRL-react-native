@@ -1,15 +1,20 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // For Android Emulator, use 10.0.2.2 to access localhost
 // For real device, use your computer's IP address
-const API_BASE_URL = 'http://10.0.2.2:5000';
+const API_BASE_URL = 'http://10.0.2.2:5000'; // Override per build environment for physical/staging devices.
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: {'Content-Type': 'application/json'},
+});
+
+api.interceptors.request.use(async config => {
+  const token = await AsyncStorage.getItem('authToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
 });
 
 /**
@@ -55,9 +60,27 @@ export const login = async (email, password) => {
  * @param {string} uniqueId - User's unique ID
  * @returns {Promise} Response with token and channel info
  */
-export const getClientToken = async uniqueId => {
+export const enrollDevice = async name => {
   try {
-    const response = await api.get(`/api/stream/token/client/${uniqueId}`);
+    const response = await api.post('/api/devices/enroll', {name});
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || {message: 'Network error occurred'};
+  }
+};
+
+export const sendHeartbeat = async (deviceId, status) => {
+  try {
+    const response = await api.post(`/api/devices/${deviceId}/heartbeat`, status);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || {message: 'Network error occurred'};
+  }
+};
+
+export const getClientToken = async deviceId => {
+  try {
+    const response = await api.get(`/api/stream/token/client/${deviceId}`);
     return response.data;
   } catch (error) {
     throw error.response?.data || {message: 'Network error occurred'};

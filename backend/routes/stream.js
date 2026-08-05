@@ -1,18 +1,11 @@
 const express = require('express');
+const {verifyDevice, getAdminToken, getClientToken} = require('../controllers/streamController');
+const {authenticate, requireRole} = require('../middleware/auth');
+
 const router = express.Router();
-const { 
-  verifyUniqueId, 
-  getAdminToken, 
-  getClientToken 
-} = require('../controllers/streamController');
-
-// GET /api/stream/verify/:uniqueId - Verify if unique ID exists
-router.get('/verify/:uniqueId', verifyUniqueId);
-
-// GET /api/stream/token/admin/:uniqueId - Get Agora token for admin (subscriber)
-router.get('/token/admin/:uniqueId', getAdminToken);
-
-// GET /api/stream/token/client/:uniqueId - Get Agora token for client (publisher)
-router.get('/token/client/:uniqueId', getClientToken);
+router.use(authenticate, requireRole('parent'));
+router.get('/verify/:deviceId', verifyDevice);
+router.get('/token/admin/:deviceId', getAdminToken);
+router.get('/token/client/:deviceId', getClientToken);
 
 module.exports = router;

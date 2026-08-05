@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {register} from '../services/api';
+import {enrollDevice, register} from '../services/api';
 import {requestPermissions} from '../services/permissions';
 
 const SignUpScreen = ({navigation}) => {
@@ -55,6 +55,9 @@ const SignUpScreen = ({navigation}) => {
         await AsyncStorage.setItem('userEmail', response.user.email);
         await AsyncStorage.setItem('uniqueId', response.user.uniqueId);
         await AsyncStorage.setItem('authToken', response.token);
+        const enrollment = await enrollDevice(`${response.user.name}'s Android`);
+        await AsyncStorage.setItem('deviceId', enrollment.device._id);
+        await AsyncStorage.setItem('uniqueId', enrollment.device.uniqueId);
 
         // Request permissions
         const permissionsGranted = await requestPermissions();

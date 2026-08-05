@@ -6,17 +6,21 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Linking,
+  TouchableOpacity,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import agoraService from '../services/agoraService';
-import {getClientToken} from '../services/api';
+import {getClientToken, sendHeartbeat} from '../services/api';
 import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
 
 const HomeScreen = ({navigation}) => {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [uniqueId, setUniqueId] = useState('');
+  const [deviceId, setDeviceId] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [policyMessage, setPolicyMessage] = useState('Monitoring starts only with visible permission and parent request.');
 
   useEffect(() => {
     loadUserData();
@@ -46,8 +50,9 @@ const HomeScreen = ({navigation}) => {
     try {
       const name = await AsyncStorage.getItem('userName');
       const id = await AsyncStorage.getItem('uniqueId');
+      const storedDeviceId = await AsyncStorage.getItem('deviceId');
 
-      if (!name || !id) {
+      if (!name || !id || !storedDeviceId) {
         // No user data, redirect to sign up
         navigation.replace('SignUp');
         return;

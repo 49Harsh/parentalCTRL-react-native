@@ -21,7 +21,7 @@ function LiveStreamView() {
 
     return () => {
       // Cleanup on unmount
-      handleDisconnect();
+      handleDisconnect(false);
     };
   }, [uniqueId]);
 
@@ -80,13 +80,13 @@ function LiveStreamView() {
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (shouldNavigate = true) => {
     try {
       await agoraService.leaveChannel();
-      navigate('/');
     } catch (err) {
       console.error('Disconnect error:', err);
-      navigate('/');
+    } finally {
+      if (shouldNavigate) navigate(`/devices/${uniqueId}`);
     }
   };
 
@@ -118,7 +118,7 @@ function LiveStreamView() {
           <h2 className="text-xl font-bold text-gray-800 mb-2">Connection Failed</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate(`/devices/${uniqueId}`)}
             className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition"
           >
             Back to Dashboard

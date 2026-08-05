@@ -1,0 +1,21 @@
+const express = require('express');
+const controller = require('../controllers/deviceController');
+const {authenticate, requireRole} = require('../middleware/auth');
+
+const router = express.Router();
+router.use(authenticate, requireRole('parent'));
+router.get('/', controller.list);
+router.post('/enroll', controller.enroll);
+router.get('/:deviceId', controller.get);
+router.patch('/:deviceId', controller.update);
+router.delete('/:deviceId', controller.revoke);
+router.post('/:deviceId/heartbeat', controller.heartbeat);
+router.put('/:deviceId/policy', controller.updatePolicy);
+router.get('/:deviceId/commands', controller.listCommands);
+router.post('/:deviceId/commands', controller.createCommand);
+router.get('/:deviceId/locations', controller.listLocations);
+router.post('/:deviceId/locations', controller.addLocation);
+router.get('/:deviceId/usage', controller.listUsage);
+router.post('/:deviceId/usage', controller.addUsage);
+
+module.exports = router;
