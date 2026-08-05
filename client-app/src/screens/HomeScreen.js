@@ -29,6 +29,8 @@ const HomeScreen = ({navigation}) => {
       // Cleanup on unmount
       agoraService.leaveChannel();
     };
+    // Initialization is intentionally run once for the mounted screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -37,6 +39,8 @@ const HomeScreen = ({navigation}) => {
     return () => {
       subscription.remove();
     };
+    // Re-subscribe when the enrolled device changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueId]);
 
   const handleAppStateChange = nextAppState => {
@@ -60,10 +64,15 @@ const HomeScreen = ({navigation}) => {
 
       setUserName(name);
       setUniqueId(id);
+      setDeviceId(storedDeviceId);
       setLoading(false);
-
-      // Start streaming after loading data
-      await startStreaming(id);
+      try {
+        const sync = await sendHeartbeat(storedDeviceId, {appVersion: '0.0.1', permissions: {camera: true, microphone: true}});
+        const liveRequest = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST');
+        if (liveRequest) setPolicyMessage('A parent requested a live session. Review permissions before enabling monitoring.');
+      } catch (syncError) {
+        console.warn('Heartbeat failed:', syncError);
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
       Alert.alert('Error', 'Failed to load user data');
@@ -71,9 +80,10 @@ const HomeScreen = ({navigation}) => {
     }
   };
 
-  const startStreaming = async (id = uniqueId) => {
+  const startStreaming = async (id = deviceId) => {
     try {
-      console.log('Starting stream for:', id);
+      if (!id) return;
+      console.log('Starting visible stream for:', id);
 
       // Get Agora token from backend
       const tokenData = await getClientToken(id);
@@ -83,7 +93,7 @@ const HomeScreen = ({navigation}) => {
       }
 
       // Initialize Agora
-      await agoraService.initialize();
+      await agoraService.initialize(tokenData.appId);
 
       // Register event handlers
       agoraService.registerEventHandlers({
@@ -162,10 +172,14 @@ const HomeScreen = ({navigation}) => {
             </Text>
           </View>
 
-          <Text style={styles.infoText}>
-            This device is being monitored. The unique ID above is required for
-            remote access.
-          </Text>
+          <Text style={styles.infoText}>{policyMessage}</Text>
+          <TouchableOpacity style={styles.consentButton} onPress={() => startStreaming(deviceId)}>
+            <Text style={styles.consentButtonText}>Approve and start visible live session</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.settingsButton} onPress={() => Linking.openSettings()}>
+            <Text style={styles.settingsButtonText}>Review app permissions</Text>
+          </TouchableOpacity>
+          <Text style={styles.policyText}>Screen sharing always requires Android's MediaProjection confirmation. SMS and call-log insights are disabled in standard Play Store builds. App blocking requires managed-device mode.</Text>
         </View>
       </View>
     </View>
@@ -271,13 +285,12 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
-  infoText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 8,
-  },
+  infoText: {fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20, marginTop: 8},
+  consentButton: {backgroundColor: '#4F46E5', borderRadius: 12, padding: 14, marginTop: 18},
+  consentButtonText: {color: '#fff', textAlign: 'center', fontWeight: '700'},
+  settingsButton: {borderWidth: 1, borderColor: '#4F46E5', borderRadius: 12, padding: 12, marginTop: 10},
+  settingsButtonText: {color: '#4F46E5', textAlign: 'center', fontWeight: '600'},
+  policyText: {fontSize: 12, color: '#777', textAlign: 'center', lineHeight: 17, marginTop: 16},
 });
 
 export default HomeScreen;

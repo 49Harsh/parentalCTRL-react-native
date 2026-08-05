@@ -2,10 +2,10 @@ import {
   createAgoraRtcEngine,
   ChannelProfileType,
   ClientRoleType,
-  VideoSourceType,
 } from 'react-native-agora';
 
-const AGORA_APP_ID = '809b73c2abfe452e853f59e9c6b375c2';
+// The token response is authoritative; configure this per build and never commit a certificate.
+const AGORA_APP_ID = '';
 
 class AgoraService {
   constructor() {
@@ -17,7 +17,7 @@ class AgoraService {
   /**
    * Initialize Agora RTC Engine
    */
-  async initialize() {
+  async initialize(appId = AGORA_APP_ID) {
     try {
       if (this.isInitialized) {
         console.log('Agora already initialized');
@@ -29,7 +29,7 @@ class AgoraService {
 
       // Initialize the engine
       this.engine.initialize({
-        appId: AGORA_APP_ID,
+        appId,
         channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
       });
 

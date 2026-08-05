@@ -6,7 +6,9 @@ export default function DeviceDetail() {
   const {deviceId} = useParams(); const navigate = useNavigate();
   const [data, setData] = useState(null); const [locations, setLocations] = useState([]); const [usage, setUsage] = useState([]); const [commands, setCommands] = useState([]); const [error, setError] = useState('');
   const load = async () => {try {const [device, loc, use, cmd] = await Promise.all([getDevice(deviceId), getLocations(deviceId), getUsage(deviceId), getCommands(deviceId)]); setData(device); setLocations(loc.locations); setUsage(use.usage); setCommands(cmd.commands);} catch (err) {setError(err.message);}};
-  useEffect(() => {load();}, [deviceId]);
+  useEffect(() => {load(); /* Device data reloads when the route id changes. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceId]);
   if (!data) return <main className="min-h-screen grid place-items-center bg-slate-50">{error || 'Loading device…'}</main>;
   const {device, policy} = data;
   const patchPolicy = async patch => {await updatePolicy(deviceId, patch); load();};

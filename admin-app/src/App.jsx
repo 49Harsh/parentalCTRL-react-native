@@ -9,7 +9,7 @@ import {getMe, logout} from './services/api';
 export default function App() {
   const [user, setUser] = useState(null); const [ready, setReady] = useState(false);
   useEffect(() => {if (!localStorage.getItem('authToken')) return setReady(true); getMe().then(data => setUser(data.user)).finally(() => setReady(true));}, []);
-  const signOut = async () => {try {await logout();} catch {} localStorage.removeItem('authToken'); setUser(null);};
+  const signOut = async () => {try {await logout();} catch (error) {console.warn('Server logout failed; clearing local session.', error);} localStorage.removeItem('authToken'); setUser(null);};
   if (!ready) return <div className="min-h-screen grid place-items-center">Loading…</div>;
   return <BrowserRouter><Routes>
     <Route path="/auth" element={user ? <Navigate to="/"/> : <Auth onAuthenticated={setUser}/>} />

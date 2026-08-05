@@ -23,6 +23,8 @@ function LiveStreamView() {
       // Cleanup on unmount
       handleDisconnect(false);
     };
+    // Stream lifecycle is intentionally keyed to the route device id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueId]);
 
   const initializeStream = async () => {
@@ -55,8 +57,8 @@ function LiveStreamView() {
           setConnected(true);
           setConnectionState('Connected');
         },
-        (audioTrack) => {
-          // Audio track received
+        () => {
+          // Audio playback is managed by the Agora service.
           console.log('Audio track received');
         }
       );

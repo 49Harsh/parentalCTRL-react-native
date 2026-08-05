@@ -4,6 +4,17 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+jest.mock('react-native-agora', () => ({
+  createAgoraRtcEngine: jest.fn(),
+  ChannelProfileType: {},
+  ClientRoleType: {},
+  VideoSourceType: {},
+  RtcSurfaceView: 'RtcSurfaceView',
+}));
 import App from '../App';
 
 test('renders correctly', async () => {

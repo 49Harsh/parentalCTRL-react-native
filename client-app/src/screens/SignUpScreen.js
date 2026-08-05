@@ -21,9 +21,9 @@ const SignUpScreen = ({navigation}) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const validateEmail = email => {
+  const validateEmail = value => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
+    return re.test(value);
   };
 
   const handleSignUp = async () => {
