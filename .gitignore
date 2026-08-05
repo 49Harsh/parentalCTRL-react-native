@@ -1,0 +1,61 @@
+# Dependencies
+**/node_modules
+**/.pnp
+**/.pnp.js
+
+# Testing
+**/coverage
+
+# Production
+**/build
+**/dist
+**/.next
+**/out
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+**/.env.*
+
+# Logs
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+
+# React Native specific
+**/.expo
+**/.expo-shared
+**/android/app/debug
+**/android/app/release
+**/*.apk
+**/*.aab
+**/*.hprof
+**/ios/Pods/
+**/*.pbxuser
+**/*.mode1v3
+**/*.mode2v3
+**/*.perspectivev3
+**/*.xcuserstate
+**/project.xcworkspace/
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.key
+**/*.mobileprovision
+**/*.orig.*
+
+# IDE specific
+**/.idea
+**/.vscode
+**/*.swp
+**/*.swo
+**/*.sublime-workspace
+**/*.sublime-project
+
+# OS specific
+**/.DS_Store
+**/Thumbs.db
