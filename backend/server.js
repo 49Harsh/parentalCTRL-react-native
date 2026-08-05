@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({path: path.join(__dirname, '.env')});
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -80,30 +81,36 @@ app.use((err, req, res, next) => {
   });
 });
 
-// MongoDB Connection
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log('✅ MongoDB connected successfully');
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    process.exit(1);
-  }
-};
-
 // Start server
 const PORT = process.env.PORT || 5000;
 
-connectDB().then(() => {
+const startServer = () => {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📍 API Base URL: http://localhost:${PORT}`);
     console.log(`💚 Environment: ${process.env.NODE_ENV || 'development'}`);
   });
-});
+};
+
+// MongoDB Connection
+const connectDB = async () => {
+  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/parental_control_app';
+
+  await mongoose.connect(uri, {serverSelectionTimeoutMS: 5000});
+  console.log('✅ MongoDB connected successfully');
+};
+
+const shouldSkipDbConnect = process.env.SKIP_DB_CONNECT === 'true';
+
+if (shouldSkipDbConnect) {
+  console.log('⚠️ SKIP_DB_CONNECT=true, skipping MongoDB connection and starting server.');
+  startServer();
+} else {
+  connectDB().then(startServer).catch((err) => {
+    console.error('❌ Backend startup aborted: MongoDB is unavailable.', err.message);
+    process.exit(1);
+  });
+}
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {

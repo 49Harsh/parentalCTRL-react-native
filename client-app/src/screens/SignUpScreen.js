@@ -47,7 +47,7 @@ const SignUpScreen = ({navigation}) => {
 
     try {
       // Register user
-      const response = await register(name, email, password);
+      const response = await register(name.trim(), email.trim().toLowerCase(), password);
 
       if (response.success) {
         // Save user data to AsyncStorage
