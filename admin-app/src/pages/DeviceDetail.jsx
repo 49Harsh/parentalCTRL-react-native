@@ -1,11 +1,11 @@
 import {useEffect, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {getCommands, getDevice, getLocations, getUsage, revokeDevice, sendCommand, updateDevice, updatePolicy} from '../services/api';
+import {getCommands, getDevice, getLocations, getNotifications, getUsage, revokeDevice, sendCommand, updateDevice, updatePolicy} from '../services/api';
 
 export default function DeviceDetail() {
   const {deviceId} = useParams(); const navigate = useNavigate();
-  const [data, setData] = useState(null); const [locations, setLocations] = useState([]); const [usage, setUsage] = useState([]); const [commands, setCommands] = useState([]); const [error, setError] = useState('');
-  const load = async () => {try {const [device, loc, use, cmd] = await Promise.all([getDevice(deviceId), getLocations(deviceId), getUsage(deviceId), getCommands(deviceId)]); setData(device); setLocations(loc.locations); setUsage(use.usage); setCommands(cmd.commands);} catch (err) {setError(err.message);}};
+  const [data, setData] = useState(null); const [locations, setLocations] = useState([]); const [usage, setUsage] = useState([]); const [commands, setCommands] = useState([]); const [notifications, setNotifications] = useState([]); const [error, setError] = useState('');
+  const load = async () => {try {const [device, loc, use, cmd, notice] = await Promise.all([getDevice(deviceId), getLocations(deviceId), getUsage(deviceId), getCommands(deviceId), getNotifications(deviceId)]); setData(device); setLocations(loc.locations); setUsage(use.usage); setCommands(cmd.commands); setNotifications(notice.notifications);} catch (err) {setError(err.message);}};
   useEffect(() => {load(); /* Device data reloads when the route id changes. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
@@ -20,6 +20,7 @@ export default function DeviceDetail() {
       <section className="panel"><h2>Safe remote actions</h2><div className="flex flex-wrap gap-2">{['STATUS_REFRESH','RING','LOCATION_REFRESH','LIVE_SESSION_REQUEST','SYNC_POLICY','END_SESSION'].map(type => <button key={type} onClick={async () => {await sendCommand(deviceId, type); load();}} className="chip">{type.replaceAll('_',' ')}</button>)}</div><p className="note">Live camera, microphone and screen sessions require a visible approval on the device.</p></section>
       <section className="panel"><h2>Recent location</h2>{locations.length ? locations.slice(0, 5).map(item => <div key={item._id} className="row">{item.latitude.toFixed(5)}, {item.longitude.toFixed(5)} <span>{new Date(item.capturedAt).toLocaleString()}</span></div>) : <p className="empty">No consented location data.</p>}</section>
       <section className="panel"><h2>App usage</h2>{usage.length ? usage.slice(0, 7).map(item => <div key={item._id} className="row">{item.date}<b>{item.totalMinutes} min</b></div>) : <p className="empty">No usage summaries.</p>}</section>
+      <section className="panel lg:col-span-2"><h2>Recent notifications</h2>{notifications.length ? notifications.slice(0, 20).map(item => <div key={item._id} className="row"><span><b>{item.packageName}</b><br/>{item.title || item.text || 'Notification content hidden'}</span><span>{new Date(item.postedAt).toLocaleString()}</span></div>) : <p className="empty">No consented notification events.</p>}</section>
       <section className="panel lg:col-span-2"><h2>Command audit</h2>{commands.length ? commands.map(item => <div key={item._id} className="row"><span>{item.type.replaceAll('_',' ')}</span><b>{item.status}</b><span>{new Date(item.createdAt).toLocaleString()}</span></div>) : <p className="empty">No commands sent.</p>}</section>
     </div>
     <button onClick={async () => {if (confirm('Revoke this device?')) {await revokeDevice(deviceId); navigate('/');}}} className="mt-8 text-red-700">Revoke device access</button>

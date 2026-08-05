@@ -26,11 +26,25 @@ class MonitoringService : Service() {
     startForeground(NOTIFICATION_ID, notification)
   }
 
-  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (intent?.action == ACTION_STOP) {
+      getSharedPreferences(ParentalControlModule.PREFS, MODE_PRIVATE)
+        .edit().putBoolean(ParentalControlModule.MONITORING_ENABLED, false).apply()
+      stopForeground(STOP_FOREGROUND_REMOVE)
+      stopSelf()
+      return START_NOT_STICKY
+    }
+    getSharedPreferences(ParentalControlModule.PREFS, MODE_PRIVATE)
+      .edit().putBoolean(ParentalControlModule.MONITORING_ENABLED, true).apply()
+    return START_STICKY
+  }
+
   override fun onBind(intent: Intent?): IBinder? = null
 
   companion object {
     const val CHANNEL_ID = "family_monitoring"
     const val NOTIFICATION_ID = 1407
+    const val ACTION_START = "com.parentalcontrolclient.action.START_MONITORING"
+    const val ACTION_STOP = "com.parentalcontrolclient.action.STOP_MONITORING"
   }
 }

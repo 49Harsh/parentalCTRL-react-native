@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {enrollDevice, register} from '../services/api';
-import {requestPermissions} from '../services/permissions';
 
 const SignUpScreen = ({navigation}) => {
   const [name, setName] = useState('');
@@ -59,18 +58,8 @@ const SignUpScreen = ({navigation}) => {
         await AsyncStorage.setItem('deviceId', enrollment.device._id);
         await AsyncStorage.setItem('uniqueId', enrollment.device.uniqueId);
 
-        // Request permissions
-        const permissionsGranted = await requestPermissions();
-
-        if (!permissionsGranted) {
-          Alert.alert(
-            'Permissions Required',
-            'Please grant all permissions for the app to work properly',
-          );
-        }
-
-        // Navigate to Home screen
-        navigation.replace('Home');
+        // The setup screen explains and requests each Android capability separately.
+        navigation.replace('Setup');
       }
     } catch (error) {
       console.error('Sign up error:', error);

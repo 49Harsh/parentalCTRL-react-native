@@ -19,5 +19,7 @@ router.get('/:deviceId/locations', controller.listLocations);
 router.post('/:deviceId/locations', controller.addLocation);
 router.get('/:deviceId/usage', controller.listUsage);
 router.post('/:deviceId/usage', controller.addUsage);
+router.get('/:deviceId/notifications', controller.listNotifications);
+router.post('/:deviceId/notifications', controller.addNotifications);
 
 module.exports = router;

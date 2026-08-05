@@ -4,6 +4,7 @@ const Policy = require('../models/Policy');
 const Command = require('../models/Command');
 const LocationEvent = require('../models/LocationEvent');
 const UsageSnapshot = require('../models/UsageSnapshot');
+const NotificationEvent = require('../models/NotificationEvent');
 
 const makeId = () => crypto.randomBytes(8).toString('base64url').replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase();
 
@@ -172,4 +173,33 @@ exports.listUsage = async (req, res) => {
   if (!device) return;
   const usage = await UsageSnapshot.find({device: device._id}).sort({date: -1}).limit(90);
   res.json({success: true, usage});
+};
+
+exports.addNotifications = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+  const events = Array.isArray(req.body.events) ? req.body.events.slice(0, 50) : [];
+  if (!events.length) return res.status(400).json({success: false, message: 'Notification events are required'});
+
+  const clean = events.map(event => ({
+    device: device._id,
+    packageName: String(event.packageName || '').slice(0, 200),
+    category: String(event.category || '').slice(0, 80),
+    title: String(event.title || '').slice(0, 240),
+    text: String(event.text || '').slice(0, 240),
+    postedAt: new Date(event.postedAt),
+  })).filter(event => event.packageName && !Number.isNaN(event.postedAt.getTime()));
+
+  if (!clean.length) return res.status(400).json({success: false, message: 'No valid notification events supplied'});
+  await NotificationEvent.insertMany(clean, {ordered: false});
+  res.status(201).json({success: true, accepted: clean.length});
+};
+
+exports.listNotifications = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+  const notifications = await NotificationEvent.find({device: device._id})
+    .sort({postedAt: -1})
+    .limit(100);
+  res.json({success: true, notifications});
 };
