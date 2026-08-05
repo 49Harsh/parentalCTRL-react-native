@@ -95,6 +95,15 @@ export const sendHeartbeat = async (deviceId, status) => {
   }
 };
 
+export const approveLiveSession = async deviceId => {
+  try {
+    const response = await api.post(`/api/devices/${deviceId}/live-session/approve`);
+    return response.data;
+  } catch (error) {
+    throw getApiError(error);
+  }
+};
+
 export const getClientToken = async deviceId => {
   try {
     const response = await api.get(`/api/stream/token/client/${deviceId}`);

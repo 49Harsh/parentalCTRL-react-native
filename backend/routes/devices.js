@@ -10,6 +10,7 @@ router.get('/:deviceId', controller.get);
 router.patch('/:deviceId', controller.update);
 router.delete('/:deviceId', controller.revoke);
 router.post('/:deviceId/heartbeat', controller.heartbeat);
+router.post('/:deviceId/live-session/approve', controller.approveLiveSession);
 router.put('/:deviceId/policy', controller.updatePolicy);
 router.get('/:deviceId/commands', controller.listCommands);
 router.post('/:deviceId/commands', controller.createCommand);

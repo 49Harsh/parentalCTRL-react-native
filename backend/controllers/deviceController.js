@@ -64,6 +64,40 @@ exports.heartbeat = async (req, res) => {
   res.json({success: true, policy, commands});
 };
 
+exports.approveLiveSession = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+
+  let command = await Command.findOne({
+    device: device._id,
+    type: 'LIVE_SESSION_REQUEST',
+    status: 'pending',
+    expiresAt: {$gt: new Date()},
+  }).sort({createdAt: -1});
+
+  if (!command) {
+    command = await Command.create({
+      device: device._id,
+      requestedBy: req.user._id,
+      type: 'LIVE_SESSION_REQUEST',
+      status: 'accepted',
+      acknowledgedAt: new Date(),
+      payload: {approvedOnDevice: true},
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
+  } else {
+    command.status = 'accepted';
+    command.acknowledgedAt = new Date();
+    command.payload = {...command.payload, approvedOnDevice: true};
+    await command.save();
+  }
+
+  device.monitoringEnabled = true;
+  await device.save();
+
+  res.json({success: true, device, command});
+};
+
 exports.updatePolicy = async (req, res) => {
   const device = await findOwned(req, res);
   if (!device) return;

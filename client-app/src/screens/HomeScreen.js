@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import agoraService from '../services/agoraService';
-import {getClientToken, sendHeartbeat} from '../services/api';
+import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
+import {checkPermissions, requestPermissions} from '../services/permissions';
 import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
 
 const HomeScreen = ({navigation}) => {
@@ -20,6 +21,7 @@ const HomeScreen = ({navigation}) => {
   const [uniqueId, setUniqueId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [startingStream, setStartingStream] = useState(false);
   const [policyMessage, setPolicyMessage] = useState('Monitoring starts only with visible permission and parent request.');
 
   useEffect(() => {
@@ -44,9 +46,8 @@ const HomeScreen = ({navigation}) => {
   }, [uniqueId]);
 
   const handleAppStateChange = nextAppState => {
-    if (nextAppState === 'active' && uniqueId && !streaming) {
-      // Restart streaming when app comes to foreground
-      startStreaming();
+    if (nextAppState !== 'active' && streaming) {
+      agoraService.leaveChannel().finally(() => setStreaming(false));
     }
   };
 
@@ -82,10 +83,21 @@ const HomeScreen = ({navigation}) => {
 
   const startStreaming = async (id = deviceId) => {
     try {
-      if (!id) return;
+      if (!id || startingStream || streaming) return;
+      setStartingStream(true);
       console.log('Starting visible stream for:', id);
 
-      // Get Agora token from backend
+      let permissionsGranted = await checkPermissions();
+      if (!permissionsGranted) {
+        permissionsGranted = await requestPermissions();
+      }
+      if (!permissionsGranted) {
+        throw new Error('Camera and microphone permissions are required to start the live session.');
+      }
+
+      await approveLiveSession(id);
+
+      // Get Agora token after recording visible device approval.
       const tokenData = await getClientToken(id);
 
       if (!tokenData.success) {
@@ -116,8 +128,10 @@ const HomeScreen = ({navigation}) => {
       console.error('Error starting stream:', error);
       Alert.alert(
         'Streaming Error',
-        'Failed to start streaming. Please check your connection.',
+        error.message || 'Failed to start streaming. Please try again.',
       );
+    } finally {
+      setStartingStream(false);
     }
   };
 
@@ -168,13 +182,26 @@ const HomeScreen = ({navigation}) => {
               ]}
             />
             <Text style={styles.statusText}>
-              {streaming ? 'Monitoring Active' : 'Connecting...'}
+              {streaming
+                ? 'Monitoring Active'
+                : startingStream
+                  ? 'Starting stream...'
+                  : 'Waiting for approval'}
             </Text>
           </View>
 
           <Text style={styles.infoText}>{policyMessage}</Text>
-          <TouchableOpacity style={styles.consentButton} onPress={() => startStreaming(deviceId)}>
-            <Text style={styles.consentButtonText}>Approve and start visible live session</Text>
+          <TouchableOpacity
+            style={[styles.consentButton, startingStream && styles.buttonDisabled]}
+            onPress={() => startStreaming(deviceId)}
+            disabled={startingStream || streaming}>
+            {startingStream ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.consentButtonText}>
+                {streaming ? 'Live session active' : 'Approve and start visible live session'}
+              </Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.settingsButton} onPress={() => Linking.openSettings()}>
             <Text style={styles.settingsButtonText}>Review app permissions</Text>
@@ -286,7 +313,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   infoText: {fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20, marginTop: 8},
-  consentButton: {backgroundColor: '#4F46E5', borderRadius: 12, padding: 14, marginTop: 18},
+  consentButton: {backgroundColor: '#4F46E5', borderRadius: 12, padding: 14, marginTop: 18, minHeight: 48, justifyContent: 'center'},
+  buttonDisabled: {opacity: 0.65},
   consentButtonText: {color: '#fff', textAlign: 'center', fontWeight: '700'},
   settingsButton: {borderWidth: 1, borderColor: '#4F46E5', borderRadius: 12, padding: 12, marginTop: 10},
   settingsButtonText: {color: '#4F46E5', textAlign: 'center', fontWeight: '600'},
