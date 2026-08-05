@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getAdminToken } from '../services/api';
+import { getAdminToken, getCommand, sendCommand } from '../services/api';
 import agoraService from '../services/agoraService';
 
 function LiveStreamView() {
@@ -17,24 +17,65 @@ function LiveStreamView() {
   const [connectionState, setConnectionState] = useState('Connecting...');
 
   useEffect(() => {
-    initializeStream();
+    let cancelled = false;
+    let retryTimer;
+
+    const requestAndInitializeStream = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        setConnectionState('Requesting device approval...');
+        const {command} = await sendCommand(uniqueId, 'LIVE_SESSION_REQUEST');
+
+        const waitForApproval = async () => {
+          if (cancelled) return;
+          const {command: latestCommand} = await getCommand(uniqueId, command._id);
+
+          if (latestCommand.status === 'accepted') {
+            setConnectionState('Approval received. Getting token...');
+            const tokenData = await getAdminToken(uniqueId);
+            if (!cancelled) await initializeStream(tokenData);
+            return;
+          }
+
+          if (latestCommand.status !== 'pending') {
+            throw new Error(
+              latestCommand.status === 'expired'
+                ? 'The device did not approve the live session within 5 minutes. Make sure that device is online and try again.'
+                : `The live-session request was ${latestCommand.status}.`,
+            );
+          }
+
+          setConnectionState('Waiting for approval on the selected device...');
+          retryTimer = window.setTimeout(waitForApproval, 3000);
+        };
+
+        await waitForApproval();
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Stream request error:', err);
+        setError(err.message || 'Failed to request the live session');
+        setLoading(false);
+        setConnectionState('Connection failed');
+      }
+    };
+
+    requestAndInitializeStream();
 
     return () => {
-      // Cleanup on unmount
+      cancelled = true;
+      window.clearTimeout(retryTimer);
       handleDisconnect(false);
     };
     // Stream lifecycle is intentionally keyed to the route device id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueId]);
 
-  const initializeStream = async () => {
+  const initializeStream = async tokenData => {
     try {
       setLoading(true);
       setError('');
-      setConnectionState('Getting token...');
-
-      // Get Agora token from backend
-      const tokenData = await getAdminToken(uniqueId);
+      setConnectionState('Approval received. Connecting...');
 
       if (!tokenData.success) {
         throw new Error(tokenData.message || 'Failed to get token');
@@ -177,6 +218,11 @@ function LiveStreamView() {
               />
             </svg>
             <p className="text-white text-lg">{connectionState}</p>
+            {connectionState.includes('Waiting for approval') && (
+              <p className="text-gray-400 text-sm mt-3 max-w-md">
+                Open the matching client app and approve the visible request. Camera and microphone permissions stay granted, but each new live session requires confirmation.
+              </p>
+            )}
           </div>
         ) : (
           <>

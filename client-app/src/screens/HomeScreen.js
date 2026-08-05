@@ -22,7 +22,8 @@ const HomeScreen = ({navigation}) => {
   const [deviceId, setDeviceId] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [startingStream, setStartingStream] = useState(false);
-  const [policyMessage, setPolicyMessage] = useState('Monitoring starts only with visible permission and parent request.');
+  const [liveRequest, setLiveRequest] = useState(null);
+  const [policyMessage, setPolicyMessage] = useState('Waiting for a parent to request a visible live session.');
 
   useEffect(() => {
     loadUserData();
@@ -44,6 +45,29 @@ const HomeScreen = ({navigation}) => {
     // Re-subscribe when the enrolled device changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueId]);
+
+  useEffect(() => {
+    if (!deviceId || streaming) return undefined;
+
+    const checkForLiveRequest = async () => {
+      try {
+        const sync = await sendHeartbeat(deviceId, {appVersion: '0.0.1'});
+        const request = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST');
+        setLiveRequest(request || null);
+        setPolicyMessage(
+          request
+            ? 'A parent requested camera and microphone access for a live session. Tap approve to start sharing.'
+            : 'Waiting for a parent to request a visible live session.',
+        );
+      } catch (syncError) {
+        console.warn('Heartbeat failed:', syncError);
+      }
+    };
+
+    checkForLiveRequest();
+    const interval = setInterval(checkForLiveRequest, 3000);
+    return () => clearInterval(interval);
+  }, [deviceId, streaming]);
 
   const handleAppStateChange = nextAppState => {
     if (nextAppState !== 'active' && streaming) {
@@ -67,13 +91,6 @@ const HomeScreen = ({navigation}) => {
       setUniqueId(id);
       setDeviceId(storedDeviceId);
       setLoading(false);
-      try {
-        const sync = await sendHeartbeat(storedDeviceId, {appVersion: '0.0.1', permissions: {camera: true, microphone: true}});
-        const liveRequest = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST');
-        if (liveRequest) setPolicyMessage('A parent requested a live session. Review permissions before enabling monitoring.');
-      } catch (syncError) {
-        console.warn('Heartbeat failed:', syncError);
-      }
     } catch (error) {
       console.error('Error loading user data:', error);
       Alert.alert('Error', 'Failed to load user data');
@@ -83,7 +100,7 @@ const HomeScreen = ({navigation}) => {
 
   const startStreaming = async (id = deviceId) => {
     try {
-      if (!id || startingStream || streaming) return;
+      if (!id || !liveRequest || startingStream || streaming) return;
       setStartingStream(true);
       console.log('Starting visible stream for:', id);
 
@@ -96,6 +113,7 @@ const HomeScreen = ({navigation}) => {
       }
 
       await approveLiveSession(id);
+      setLiveRequest(null);
 
       // Get Agora token after recording visible device approval.
       const tokenData = await getClientToken(id);
@@ -192,14 +210,21 @@ const HomeScreen = ({navigation}) => {
 
           <Text style={styles.infoText}>{policyMessage}</Text>
           <TouchableOpacity
-            style={[styles.consentButton, startingStream && styles.buttonDisabled]}
+            style={[
+              styles.consentButton,
+              (!liveRequest || startingStream || streaming) && styles.buttonDisabled,
+            ]}
             onPress={() => startStreaming(deviceId)}
-            disabled={startingStream || streaming}>
+            disabled={!liveRequest || startingStream || streaming}>
             {startingStream ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.consentButtonText}>
-                {streaming ? 'Live session active' : 'Approve and start visible live session'}
+                {streaming
+                  ? 'Live session active'
+                  : liveRequest
+                    ? 'Approve and start visible live session'
+                    : 'No live-session request pending'}
               </Text>
             )}
           </TouchableOpacity>

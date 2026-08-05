@@ -22,6 +22,7 @@ export const updateDevice = (id, data) => api.patch(`/api/devices/${id}`, data).
 export const revokeDevice = id => api.delete(`/api/devices/${id}`).then(r => r.data);
 export const updatePolicy = (id, data) => api.put(`/api/devices/${id}/policy`, data).then(r => r.data);
 export const getCommands = id => api.get(`/api/devices/${id}/commands`).then(r => r.data);
+export const getCommand = (id, commandId) => api.get(`/api/devices/${id}/commands/${commandId}`).then(r => r.data);
 export const sendCommand = (id, type, payload = {}) => api.post(`/api/devices/${id}/commands`, {type, payload}).then(r => r.data);
 export const getLocations = id => api.get(`/api/devices/${id}/locations`).then(r => r.data);
 export const getUsage = id => api.get(`/api/devices/${id}/usage`).then(r => r.data);

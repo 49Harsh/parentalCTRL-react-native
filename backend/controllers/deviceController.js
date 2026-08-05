@@ -76,21 +76,16 @@ exports.approveLiveSession = async (req, res) => {
   }).sort({createdAt: -1});
 
   if (!command) {
-    command = await Command.create({
-      device: device._id,
-      requestedBy: req.user._id,
-      type: 'LIVE_SESSION_REQUEST',
-      status: 'accepted',
-      acknowledgedAt: new Date(),
-      payload: {approvedOnDevice: true},
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    return res.status(404).json({
+      success: false,
+      message: 'No pending live-session request was found. Ask the parent to request a new session.',
     });
-  } else {
-    command.status = 'accepted';
-    command.acknowledgedAt = new Date();
-    command.payload = {...command.payload, approvedOnDevice: true};
-    await command.save();
   }
+
+  command.status = 'accepted';
+  command.acknowledgedAt = new Date();
+  command.payload = {...command.payload, approvedOnDevice: true};
+  await command.save();
 
   device.monitoringEnabled = true;
   await device.save();
@@ -111,7 +106,16 @@ exports.createCommand = async (req, res) => {
   const device = await findOwned(req, res);
   if (!device) return;
   const policy = await Policy.findOne({device: device._id});
-  if (!policy?.allowedCommands.includes(req.body.type)) return res.status(403).json({success: false, message: 'Command is not allowed by device policy'});
+  const alwaysAllowed = ['LIVE_SESSION_REQUEST', 'END_SESSION'];
+  if (!alwaysAllowed.includes(req.body.type) && !policy?.allowedCommands.includes(req.body.type)) {
+    return res.status(403).json({success: false, message: 'Command is not allowed by device policy'});
+  }
+  if (req.body.type === 'LIVE_SESSION_REQUEST') {
+    await Command.updateMany(
+      {device: device._id, type: 'LIVE_SESSION_REQUEST', status: 'pending'},
+      {status: 'expired'},
+    );
+  }
   const command = await Command.create({device: device._id, requestedBy: req.user._id, type: req.body.type, payload: req.body.payload || {}, expiresAt: new Date(Date.now() + 5 * 60 * 1000)});
   res.status(201).json({success: true, command});
 };
@@ -121,6 +125,21 @@ exports.listCommands = async (req, res) => {
   if (!device) return;
   const commands = await Command.find({device: device._id}).sort({createdAt: -1}).limit(100);
   res.json({success: true, commands});
+};
+
+exports.getCommand = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+
+  const command = await Command.findOne({_id: req.params.commandId, device: device._id});
+  if (!command) return res.status(404).json({success: false, message: 'Command not found'});
+
+  if (command.status === 'pending' && command.expiresAt <= new Date()) {
+    command.status = 'expired';
+    await command.save();
+  }
+
+  res.json({success: true, command});
 };
 
 exports.addLocation = async (req, res) => {

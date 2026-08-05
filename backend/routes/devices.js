@@ -13,6 +13,7 @@ router.post('/:deviceId/heartbeat', controller.heartbeat);
 router.post('/:deviceId/live-session/approve', controller.approveLiveSession);
 router.put('/:deviceId/policy', controller.updatePolicy);
 router.get('/:deviceId/commands', controller.listCommands);
+router.get('/:deviceId/commands/:commandId', controller.getCommand);
 router.post('/:deviceId/commands', controller.createCommand);
 router.get('/:deviceId/locations', controller.listLocations);
 router.post('/:deviceId/locations', controller.addLocation);
