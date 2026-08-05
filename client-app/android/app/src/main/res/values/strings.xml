@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">ParentalControlClient</string>
+    <string name="accessibility_service_description">FamilyGuard remote control allows parents to view and control this device with the child\'s knowledge and consent.</string>
 </resources>

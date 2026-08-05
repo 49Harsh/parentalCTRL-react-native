@@ -29,4 +29,6 @@ export const getUsage = id => api.get(`/api/devices/${id}/usage`).then(r => r.da
 export const getNotifications = id => api.get(`/api/devices/${id}/notifications`).then(r => r.data);
 export const verifyUniqueId = id => api.get(`/api/stream/verify/${id}`).then(r => r.data);
 export const getAdminToken = id => api.get(`/api/stream/token/admin/${id}`).then(r => r.data);
+export const grantPersistentAccess = id => api.post(`/api/devices/${id}/persistent-access/grant`).then(r => r.data);
+export const revokePersistentAccess = id => api.post(`/api/devices/${id}/persistent-access/revoke`).then(r => r.data);
 export default api;

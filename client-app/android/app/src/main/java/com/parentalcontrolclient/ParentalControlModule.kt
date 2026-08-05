@@ -77,6 +77,77 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
     activity.requestScreenCapture(promise)
   }
 
+  @ReactMethod
+  fun isAccessibilityServiceEnabled(promise: Promise) {
+    val enabled = try {
+      val enabledServices = Settings.Secure.getString(
+        reactContext.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+      ) ?: ""
+      enabledServices.contains(reactContext.packageName)
+    } catch (e: Exception) {
+      false
+    }
+    promise.resolve(enabled)
+  }
+
+  @ReactMethod
+  fun openAccessibilitySettings(promise: Promise) = openSettings(
+    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+    promise,
+  )
+
+  @ReactMethod
+  fun performRemoteTouch(x: Float, y: Float, promise: Promise) {
+    val service = RemoteControlService.instance
+    if (service == null) {
+      promise.reject("SERVICE_UNAVAILABLE", "Accessibility service is not enabled")
+      return
+    }
+    val success = service.performTouch(x, y)
+    promise.resolve(success)
+  }
+
+  @ReactMethod
+  fun performRemoteSwipe(
+    x1: Float,
+    y1: Float,
+    x2: Float,
+    y2: Float,
+    durationMs: Int,
+    promise: Promise,
+  ) {
+    val service = RemoteControlService.instance
+    if (service == null) {
+      promise.reject("SERVICE_UNAVAILABLE", "Accessibility service is not enabled")
+      return
+    }
+    val success = service.performSwipe(x1, y1, x2, y2, durationMs.toLong())
+    promise.resolve(success)
+  }
+
+  @ReactMethod
+  fun performRemoteLongPress(x: Float, y: Float, durationMs: Int, promise: Promise) {
+    val service = RemoteControlService.instance
+    if (service == null) {
+      promise.reject("SERVICE_UNAVAILABLE", "Accessibility service is not enabled")
+      return
+    }
+    val success = service.performLongPress(x, y, durationMs.toLong())
+    promise.resolve(success)
+  }
+
+  @ReactMethod
+  fun performGlobalAction(action: Int, promise: Promise) {
+    val service = RemoteControlService.instance
+    if (service == null) {
+      promise.reject("SERVICE_UNAVAILABLE", "Accessibility service is not enabled")
+      return
+    }
+    val success = service.executeGlobalAction(action)
+    promise.resolve(success)
+  }
+
   private fun openSettings(intent: Intent, promise: Promise) {
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     reactContext.startActivity(intent)

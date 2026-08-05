@@ -8,12 +8,16 @@ import {
   AppState,
   Linking,
   TouchableOpacity,
+  NativeModules,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import agoraService from '../services/agoraService';
+import remoteControl from '../services/remoteControl';
 import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
 import {checkPermissions, requestPermissions} from '../services/permissions';
 import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
+
+const {ParentalControl} = NativeModules;
 
 const HomeScreen = ({navigation}) => {
   const [loading, setLoading] = useState(true);
@@ -59,6 +63,15 @@ const HomeScreen = ({navigation}) => {
             ? 'A parent requested camera and microphone access for a live session. Tap approve to start sharing.'
             : 'Waiting for a parent to request a visible live session.',
         );
+
+        // Handle remote control commands
+        const remoteCommands = sync.commands?.filter(cmd => 
+          ['REMOTE_TOUCH', 'REMOTE_ACTION'].includes(cmd.type) && cmd.status === 'pending'
+        ) || [];
+        
+        for (const cmd of remoteCommands) {
+          await handleRemoteCommand(cmd);
+        }
       } catch (syncError) {
         console.warn('Heartbeat failed:', syncError);
       }
@@ -95,6 +108,45 @@ const HomeScreen = ({navigation}) => {
       console.error('Error loading user data:', error);
       Alert.alert('Error', 'Failed to load user data');
       setLoading(false);
+    }
+  };
+
+  const handleRemoteCommand = async (command) => {
+    try {
+      const {type, payload} = command;
+      
+      if (type === 'REMOTE_TOUCH') {
+        const {x, y, type: touchType} = payload;
+        if (touchType === 'tap') {
+          await remoteControl.tap(x, y);
+        } else if (touchType === 'longPress') {
+          await remoteControl.longPress(x, y);
+        }
+      } else if (type === 'REMOTE_ACTION') {
+        const {action} = payload;
+        switch (action) {
+          case 'home':
+            await remoteControl.pressHome();
+            break;
+          case 'back':
+            await remoteControl.pressBack();
+            break;
+          case 'recents':
+            await remoteControl.pressRecents();
+            break;
+          case 'notifications':
+            await remoteControl.openNotifications();
+            break;
+        }
+      }
+
+      // Mark command as executed
+      await sendHeartbeat(deviceId, {
+        lastCommandId: command._id,
+        lastCommandStatus: 'executed',
+      });
+    } catch (error) {
+      console.error('Failed to execute remote command:', error);
     }
   };
 
@@ -220,11 +272,7 @@ const HomeScreen = ({navigation}) => {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.consentButtonText}>
-                {streaming
-                  ? 'Live session active'
-                  : liveRequest
-                    ? 'Approve and start visible live session'
-                    : 'No live-session request pending'}
+                {streaming ? 'Live session active' : 'Approve and start visible live session'}
               </Text>
             )}
           </TouchableOpacity>

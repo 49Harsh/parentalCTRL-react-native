@@ -14,6 +14,12 @@ const deviceSchema = new mongoose.Schema({
     appVersion: String,
     permissions: {type: Map, of: Boolean},
   },
+  persistentAccess: {
+    granted: {type: Boolean, default: false},
+    grantedAt: Date,
+    accessToken: String,
+    expiresAt: Date,
+  },
 }, {timestamps: true});
 
 deviceSchema.index({owner: 1, createdAt: -1});

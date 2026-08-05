@@ -203,3 +203,58 @@ exports.listNotifications = async (req, res) => {
     .limit(100);
   res.json({success: true, notifications});
 };
+
+// Grant persistent remote access (one-time setup)
+exports.grantPersistentAccess = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+
+  const accessToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+  device.persistentAccess = {
+    granted: true,
+    grantedAt: new Date(),
+    accessToken,
+    expiresAt,
+  };
+  device.monitoringEnabled = true;
+  await device.save();
+
+  res.json({success: true, accessToken, expiresAt});
+};
+
+// Revoke persistent access
+exports.revokePersistentAccess = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+
+  device.persistentAccess = {
+    granted: false,
+    grantedAt: null,
+    accessToken: null,
+    expiresAt: null,
+  };
+  await device.save();
+
+  res.json({success: true, message: 'Persistent access revoked'});
+};
+
+// Validate persistent access token (for client app)
+exports.validatePersistentAccess = async (req, res) => {
+  const {uniqueId, accessToken} = req.body;
+  
+  const device = await Device.findOne({
+    uniqueId: String(uniqueId).toUpperCase(),
+    isActive: true,
+    'persistentAccess.granted': true,
+    'persistentAccess.accessToken': accessToken,
+    'persistentAccess.expiresAt': {$gt: new Date()},
+  });
+
+  if (!device) {
+    return res.status(401).json({success: false, message: 'Invalid or expired access token'});
+  }
+
+  res.json({success: true, device: {id: device._id, name: device.name, uniqueId: device.uniqueId}});
+};
