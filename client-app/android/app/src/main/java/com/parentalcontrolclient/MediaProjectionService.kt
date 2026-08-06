@@ -19,7 +19,23 @@ class MediaProjectionService : Service() {
       .setContentText("Open FamilyGuard to stop sharing")
       .setOngoing(true)
       .build()
-    startForeground(NOTIFICATION_ID, notification)
+    try {
+      if (android.os.Build.VERSION.SDK_INT >= 34) {
+        startForeground(
+          NOTIFICATION_ID,
+          notification,
+          android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        )
+      } else {
+        startForeground(NOTIFICATION_ID, notification)
+      }
+    } catch (e: Exception) {
+      try {
+        startForeground(NOTIFICATION_ID, notification)
+      } catch (ex: Exception) {
+        ex.printStackTrace()
+      }
+    }
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY

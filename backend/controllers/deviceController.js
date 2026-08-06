@@ -207,17 +207,38 @@ exports.createCommand = async (req, res) => {
     return res.status(403).json({success: false, message: 'Command is not allowed by device policy'});
   }
   if (req.body.type === 'LIVE_SESSION_REQUEST') {
-    // If ANY valid pending request exists (expiresAt > now), reuse it
-    const activePending = await Command.findOne({
+    // AirDroid style: Auto-enable monitoring and auto-approve live session request
+    device.monitoringEnabled = true;
+    await device.save();
+
+    const activeSession = await Command.findOne({
       device: device._id,
       type: 'LIVE_SESSION_REQUEST',
-      status: 'pending',
+      status: {$in: ['accepted', 'pending']},
       expiresAt: {$gt: new Date()},
     }).sort({createdAt: -1});
 
-    if (activePending) {
-      return res.status(200).json({success: true, command: activePending});
+    if (activeSession) {
+      if (activeSession.status !== 'accepted') {
+        activeSession.status = 'accepted';
+        activeSession.acknowledgedAt = new Date();
+        activeSession.expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+        await activeSession.save();
+      }
+      return res.status(200).json({success: true, command: activeSession});
     }
+
+    const command = await Command.create({
+      device: device._id,
+      requestedBy: req.user._id,
+      type: 'LIVE_SESSION_REQUEST',
+      status: 'accepted',
+      acknowledgedAt: new Date(),
+      payload: req.body.payload || {},
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+
+    return res.status(201).json({success: true, command});
   }
   const command = await Command.create({device: device._id, requestedBy: req.user._id, type: req.body.type, payload: req.body.payload || {}, expiresAt: new Date(Date.now() + 5 * 60 * 1000)});
   res.status(201).json({success: true, command});

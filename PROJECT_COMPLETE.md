@@ -1,391 +1,110 @@
-# 🎉 Parental Control App - Project Complete!
-
-## 📋 Project Overview
-
-A complete parental control/monitoring system with three components:
-1. **Backend Server** (Node.js + Express + MongoDB)
-2. **Admin Dashboard** (React.js Web App)
-3. **Client Mobile App** (React Native - Android)
-
-## ✅ What's Been Built
-
-### 1. Backend Server (✅ Complete)
-**Location**: `backend/`
-**Tech Stack**: Node.js, Express, MongoDB Atlas, Agora Token Generation
-
-**Features**:
-- ✅ User registration with auto-generated 10-character unique IDs
-- ✅ Email & password authentication with JWT tokens
-- ✅ Password hashing with bcryptjs
-- ✅ Agora RTC token generation for streaming
-- ✅ MongoDB database integration
-- ✅ RESTful API endpoints
-
-**API Endpoints**:
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
-- `GET /api/stream/verify/:uniqueId` - Verify unique ID
-- `GET /api/stream/token/admin/:uniqueId` - Get admin token
-- `GET /api/stream/token/client/:uniqueId` - Get client token
-
-**Environment**:
-- Port: 5000
-- Database: MongoDB Atlas (cloud)
-- Agora App ID: 809b73c2abfe452e853f59e9c6b375c2
-
----
-
-### 2. Admin Dashboard (✅ Complete)
-**Location**: `admin-app/`
-**Tech Stack**: React.js, Vite, Tailwind CSS, Agora Web SDK
-
-**Features**:
-- ✅ Beautiful gradient UI with Tailwind CSS
-- ✅ Unique ID input with validation
-- ✅ Live video + audio streaming from client devices
-- ✅ Mute/unmute audio controls
-- ✅ Connection status indicators
-- ✅ User information display
-- ✅ Responsive design
-
-**Screens**:
-1. Dashboard - Enter unique ID to connect
-2. Live Stream View - Monitor device with controls
-
-**URL**: `http://localhost:5173` (when running)
-
----
-
-### 3. Client Mobile App (✅ Complete)
-**Location**: `client-app/`
-**Tech Stack**: React Native CLI, Agora RTC SDK, AsyncStorage
-
-**Features**:
-- ✅ User registration screen
-- ✅ Automatic unique ID generation
-- ✅ Camera, Microphone, Contacts permissions
-- ✅ Live video + audio broadcasting via Agora
-- ✅ Minimal UI showing only name and unique ID
-- ✅ Persistent data storage
-- ✅ Auto-start streaming on registration
-- ✅ Background streaming support
-
-**Screens**:
-1. Sign Up - User registration
-2. Home - Display account info and stream
-
-**Target**: Android devices/emulators
-
----
-
-## 🚀 How to Run the Complete System
-
-### Prerequisites
-- Node.js v16+
-- Android Studio with SDK
-- Android Emulator or Physical Device
-- Internet connection
-
-### Step 1: Start Backend Server
-```powershell
-cd C:\Users\seaen\OneDrive\Desktop\parental-controlApp\backend
-npm run dev
-```
-✅ Server will start on `http://localhost:5000`
-
-### Step 2: Start Admin Dashboard
-```powershell
-cd C:\Users\seaen\OneDrive\Desktop\parental-controlApp\admin-app
-npm run dev
-```
-✅ Dashboard will open at `http://localhost:5173`
-
-### Step 3: Run Client Mobile App
-
-**Terminal 1 - Start Metro Bundler:**
-```powershell
-cd C:\Users\seaen\OneDrive\Desktop\parental-controlApp\client-app
-npx react-native start
-```
-
-**Terminal 2 - Build & Run on Android:**
-```powershell
-npx react-native run-android
-```
-
----
-
-## 📱 Complete Usage Flow
-
-### 1. Register a Client Device
-
-1. Open the mobile app on Android
-2. Fill in the registration form:
-   - Name: John Doe
-   - Email: john@example.com
-   - Password: 123456 (minimum 6 chars)
-3. Tap **Sign Up**
-4. Grant permissions (Camera, Microphone, Contacts)
-5. Note the **Unique ID** displayed (e.g., `aB3dE7fGh9`)
-
-### 2. Monitor from Admin Dashboard
-
-1. Open browser to `http://localhost:5173`
-2. Enter the Unique ID from the mobile app
-3. Click **Connect**
-4. View live video + audio stream
-5. Use controls to mute/unmute or disconnect
-
----
-
-## 📁 Project Structure
-
-```
-parental-controlApp/
-├── backend/               # Node.js API Server
-│   ├── models/           # MongoDB schemas
-│   ├── routes/           # API endpoints
-│   ├── controllers/      # Business logic
-│   ├── utils/            # Helper functions
-│   ├── server.js         # Main server file
-│   ├── .env              # Environment variables
-│   └── package.json
-│
-├── admin-app/            # React Web Dashboard
-│   ├── src/
-│   │   ├── pages/        # Dashboard & LiveStream
-│   │   ├── services/     # API & Agora services
-│   │   └── App.jsx       # Main component
-│   ├── .env              # Environment variables
-│   └── package.json
-│
-└── client-app/           # React Native Mobile App
-    ├── src/
-    │   ├── screens/      # SignUp & Home screens
-    │   ├── services/     # API, Agora, Permissions
-    │   └── navigation/   # App navigation
-    ├── android/          # Android native code
-    ├── App.tsx           # Main app component
-    └── package.json
-```
-
----
-
-## 🔑 Key Credentials
-
-### Agora
-- **App ID**: `809b73c2abfe452e853f59e9c6b375c2`
-- **Certificate**: `fa5e0b1cf6f04a91ab697c3fee23ccc2`
-
-### MongoDB Atlas
-- **Connection String**: `mongodb+srv://user02:KyHUL2tLft4f7eUK@cluster0.jti7fnq.mongodb.net/parental_control_app?retryWrites=true&w=majority`
-- **Database**: `parental_control_app`
-
-### Ports
-- Backend: `5000`
-- Admin App: `5173`
-- Client App: Dynamic (React Native)
-
----
-
-## 🎯 Features Implemented
-
-### Core Features ✅
-- [x] User registration with unique ID generation
-- [x] Email & password authentication
-- [x] Live video streaming (Agora RTC)
-- [x] Live audio streaming (Agora RTC)
-- [x] Admin web dashboard
-- [x] React Native mobile client
-- [x] Permission handling (Camera, Mic, Contacts)
-- [x] Persistent data storage
-- [x] JWT authentication
-- [x] MongoDB integration
-- [x] Agora token generation
-
-### UI/UX ✅
-- [x] Beautiful gradient design (Admin)
-- [x] Minimal client UI (name + ID only)
-- [x] Loading states
-- [x] Error handling
-- [x] Connection status indicators
-- [x] Responsive design
-
-### Security ✅
-- [x] Password hashing (bcryptjs)
-- [x] JWT tokens
-- [x] Agora secure tokens (24hr expiry)
-- [x] Input validation
-- [x] Unique ID verification
-
----
-
-## 🛠 Troubleshooting
-
-### Backend Issues
-
-**Problem**: MongoDB connection failed
-**Solution**: Check internet connection and MongoDB Atlas credentials
-
-**Problem**: Port 5000 already in use
-**Solution**: Kill the process using port 5000 or change port in `.env`
-
-### Admin App Issues
-
-**Problem**: Can't connect to backend
-**Solution**: Ensure backend is running on port 5000
-
-**Problem**: No video stream showing
-**Solution**: Verify client app is running and streaming
-
-### Client App Issues
-
-**Problem**: Network error when registering
-**Solution**: 
-- For emulator: Use `http://10.0.2.2:5000`
-- For device: Update IP to your computer's address
-
-**Problem**: Permissions not granted
-**Solution**: Manually grant in Settings → Apps → ParentalControlClient → Permissions
-
-**Problem**: Build failed
-**Solution**: 
-```powershell
-cd android
-./gradlew clean
-cd ..
-npx react-native run-android
-```
-
----
-
-## 📊 System Architecture
-
-```
-┌─────────────────┐
-│  Admin Browser  │
-│   (Port 5173)   │
-└────────┬────────┘
-         │
-         │ HTTP + WebSocket
-         │
-┌────────▼────────┐         ┌──────────────┐
-│  Backend Server │◄────────┤   MongoDB    │
-│   (Port 5000)   │         │    Atlas     │
-└────────┬────────┘         └──────────────┘
-         │
-         │ HTTP + Agora Tokens
-         │
-┌────────▼────────┐
-│  Mobile Client  │
-│  (React Native) │
-└─────────────────┘
-         │
-         │ Agora RTC
-         │
-┌────────▼────────┐
-│  Agora Servers  │
-│   (Streaming)   │
-└─────────────────┘
-```
-
----
-
-## 🎓 Learning Resources
-
-### Technologies Used:
-- **Node.js & Express**: Backend API server
-- **MongoDB**: NoSQL database
-- **React.js**: Admin web interface
-- **React Native**: Mobile app framework
-- **Agora**: Real-time communication platform
-- **JWT**: Authentication tokens
-- **Tailwind CSS**: Utility-first CSS
-
----
-
-## 🔮 Future Enhancements (Optional)
-
-### Not Implemented (Advanced Features):
-- [ ] Background foreground service (Android native)
-- [ ] Auto-start on device boot
-- [ ] Battery optimization handling
-- [ ] Screen recording
-- [ ] Location tracking
-- [ ] SMS monitoring
-- [ ] Call logs access
-- [ ] App usage statistics
-- [ ] Remote device control
-- [ ] Multi-device support
-- [ ] Push notifications
-- [ ] HTTPS/SSL certificates
-- [ ] Production deployment
-
----
-
-## 📞 Testing Checklist
-
-### Backend
-- [x] Server starts successfully
-- [x] MongoDB connection works
-- [x] User registration creates unique ID
-- [x] Login returns JWT token
-- [x] Agora tokens generate correctly
-
-### Admin App
-- [x] Dashboard loads
-- [x] Unique ID validation works
-- [x] Can connect to valid ID
-- [x] Video stream displays
-- [x] Audio plays
-- [x] Controls work (mute, disconnect)
-
-### Client App
-- [x] Registration form works
-- [x] Unique ID generated and displayed
-- [x] Permissions requested
-- [x] Streaming starts automatically
-- [x] Data persists in AsyncStorage
-
-### Integration
-- [ ] Complete flow: Register → Connect → Stream
-- [ ] Test on both emulator and physical device
-- [ ] Test network interruptions
-- [ ] Test multiple simultaneous connections
-
----
-
-## 🎉 Congratulations!
-
-You now have a fully functional parental control system with:
-- ✅ Complete backend infrastructure
-- ✅ Beautiful admin dashboard
-- ✅ Functional mobile client app
-- ✅ Live video + audio streaming
-- ✅ Secure authentication
-- ✅ Database integration
-
-## 🚀 Next Steps
-
-1. **Test the complete flow** end-to-end
-2. **Try on a physical Android device**
-3. **Experiment with multiple clients**
-4. **Add the optional background service** for production use
-5. **Deploy to production** when ready
-
----
-
-## 📝 Documentation
-
-- Backend API: See `backend/server.js` for endpoint documentation
-- Client App: See `client-app/SETUP_GUIDE.md` for detailed instructions
-- Admin App: See `admin-app/src/` for component structure
-
----
-
-## 🙏 Thank You!
-
-The project is complete and ready to use. All three components are functional and integrated. Happy monitoring! 🎊
-
-**Created**: November 10, 2025
-**Status**: ✅ COMPLETE & WORKING
+# FamilyGuard Parental Control App
+
+## Current status
+
+The original proof of concept has been upgraded into a **secure, consent-based parental-control MVP foundation** with three components:
+
+- `backend/` — Node.js, Express and MongoDB API
+- `admin-app/` — React/Vite parent dashboard
+- `client-app/` — React Native Android enrolled-device client
+
+> Important: credentials previously written in this document must be considered compromised. Rotate the MongoDB password, JWT secret, Agora certificate and any related keys before running or deploying the system. Real secrets belong only in untracked `.env` files.
+
+## Implemented
+
+### Security and accounts
+- Parent registration, login, current-session and logout APIs
+- Password hashing and JWT validation with session revocation versioning
+- Helmet, CORS allow-list, request-size limits and API rate limiting
+- Protected device and streaming routes
+- Parent ownership checks on all enrolled-device resources
+- Environment template at `backend/.env.example`
+
+### Multi-device management
+- Enroll, list, inspect, rename, enable/disable monitoring and revoke devices
+- Case-consistent 10-character device identifiers
+- Device heartbeat, last-seen and permission/status metadata
+- Per-device screen-time policy, bedtime, app limits, location/usage sharing flags and safe command allow-list
+- Safe command queue and audit history
+
+### Parent dashboard
+- Parent sign-up/sign-in and protected routes
+- Multi-device dashboard
+- Device overview, screen-time settings, location/usage summaries and command history
+- Safe remote actions: status refresh, ring, location refresh, visible live-session request, policy sync and session end
+- Authenticated Agora live-view flow
+
+### Android client
+- Session restoration and enrolled-device persistence
+- Authenticated API requests and heartbeat foundation
+- Camera/microphone permissions requested without unused contacts access
+- Visible user approval button for live monitoring
+- Foreground-service and reboot-recovery native foundations with persistent notification
+- Permission review and clear Android distribution limitations
+- Agora App ID obtained from backend token response rather than hardcoded certificate material
+
+### Data APIs
+- Location events (only while policy allows sharing)
+- Aggregated app-usage snapshots (only while policy allows sharing)
+- Device policies and commands
+
+## Consent and platform rules
+
+This application does not implement covert monitoring. Camera, microphone, screen sharing and location collection must be visible, permission-based and revocable.
+
+- **Screen sharing/recording:** Android MediaProjection must show its system confirmation for each required session. No hidden capture is permitted.
+- **App usage:** Requires the user to grant Usage Access in Android settings.
+- **App blocking:** Reliable enforcement requires Android managed-device/device-owner deployment. Standard Play Store installs should use reminders and alerts.
+- **SMS and call logs:** Restricted by Google Play policy. They remain disabled in standard builds and may only be developed for an eligible managed/enterprise distribution with explicit consent and legal review.
+- **Boot restore:** Only restores a service the device user explicitly enabled; it must not silently activate camera, microphone or screen capture.
+
+## Setup
+
+1. Copy `backend/.env.example` to `backend/.env` and provide newly rotated credentials.
+2. Install and run the backend:
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+3. Configure `admin-app/.env` with `VITE_BACKEND_URL`, then run:
+   ```bash
+   cd admin-app
+   npm install
+   npm run dev
+   ```
+4. Configure the Android client's backend URL for emulator, LAN or staging in `client-app/src/services/api.js`, then run Metro and Android from `client-app/`.
+
+## API summary
+
+- `POST /api/auth/register`, `POST /api/auth/login`
+- `GET /api/auth/me`, `POST /api/auth/logout`
+- `GET /api/devices`, `POST /api/devices/enroll`
+- `GET|PATCH|DELETE /api/devices/:deviceId`
+- `POST /api/devices/:deviceId/heartbeat`
+- `PUT /api/devices/:deviceId/policy`
+- `GET|POST /api/devices/:deviceId/commands`
+- `GET|POST /api/devices/:deviceId/locations`
+- `GET|POST /api/devices/:deviceId/usage`
+- `GET /api/stream/verify/:deviceId`
+- `GET /api/stream/token/admin/:deviceId`
+- `GET /api/stream/token/client/:deviceId`
+
+All device and stream APIs require a valid parent bearer token and ownership. Admin live tokens additionally require monitoring to be enabled and an accepted, unexpired visible live-session request.
+
+## Remaining production work
+
+The following require provider credentials, physical Android validation, or a selected distribution model and therefore are not claimed complete:
+
+- Firebase Cloud Messaging credentials and production push delivery
+- Full native UsageStats collection and managed-device enforcement
+- Full MediaProjection screen stream implementation and optional encrypted recording retention
+- Background location implementation with tested retention/deletion controls
+- Managed-distribution SMS/call-log adapter (not allowed in standard build)
+- Cloud hosting, HTTPS domain/certificate, observability and backups
+- Android signing, Play data-safety declaration and privacy-policy publication
+- Complete physical-device end-to-end and network interruption test matrix
+
+## Definition of production-ready
+
+Do not label the product production-ready until backend tests, admin lint/build/tests, mobile tests, Android debug/release builds, physical-device enrollment, permission denial/revocation, network loss, token expiry, multiple devices, and live-session approval/rejection all pass with newly rotated secrets and HTTPS.

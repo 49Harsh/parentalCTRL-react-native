@@ -40,6 +40,24 @@ export const requestPermissions = async () => {
 };
 
 /**
+ * Show Alert and open Android Settings if permissions are denied
+ */
+export const promptOpenSettings = (
+  title = 'Permissions Required',
+  message = 'Camera and Microphone permissions are required for background streaming. Please tap "Open Settings" and select "Allow" for Camera and Microphone.',
+) => {
+  const {Alert, Linking} = require('react-native');
+  Alert.alert(
+    title,
+    message,
+    [
+      {text: 'Cancel', style: 'cancel'},
+      {text: 'Open Settings', onPress: () => Linking.openSettings()},
+    ],
+  );
+};
+
+/**
  * Check if all required permissions are granted
  * @returns {Promise<boolean>} True if all permissions granted
  */

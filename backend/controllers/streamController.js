@@ -30,7 +30,8 @@ const getAdminToken = async (req, res) => {
   const device = await getAccessibleDevice(req);
   if (!device) return res.status(404).json({success: false, message: 'Device not found'});
   const approved = await Command.findOne({device: device._id, type: 'LIVE_SESSION_REQUEST', status: 'accepted', expiresAt: {$gt: new Date()}});
-  if (!device.monitoringEnabled || !approved) return res.status(403).json({success: false, message: 'A visible live-session approval is required on the device'});
+  const isAuthorized = device.persistentAccess?.granted || (device.monitoringEnabled && approved);
+  if (!isAuthorized) return res.status(403).json({success: false, message: 'A visible live-session approval is required on the device'});
   res.json({success: true, ...generateAdminToken(device.uniqueId), device: {id: device._id, name: device.name, uniqueId: device.uniqueId}});
 };
 

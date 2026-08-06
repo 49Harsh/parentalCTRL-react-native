@@ -48,13 +48,18 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun startMonitoringService(promise: Promise) {
-    reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      .edit().putBoolean(MONITORING_ENABLED, true).apply()
-    ContextCompat.startForegroundService(
-      reactContext,
-      Intent(reactContext, MonitoringService::class.java).setAction(MonitoringService.ACTION_START),
-    )
-    promise.resolve(true)
+    try {
+      reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .edit().putBoolean(MONITORING_ENABLED, true).apply()
+      ContextCompat.startForegroundService(
+        reactContext,
+        Intent(reactContext, MonitoringService::class.java).setAction(MonitoringService.ACTION_START),
+      )
+      promise.resolve(true)
+    } catch (e: Exception) {
+      e.printStackTrace()
+      promise.resolve(false)
+    }
   }
 
   @ReactMethod

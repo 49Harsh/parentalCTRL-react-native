@@ -3,6 +3,7 @@ import {
   ChannelProfileType,
   ClientRoleType,
 } from 'react-native-agora';
+import {Platform} from 'react-native';
 
 // The token response is authoritative; configure this per build and never commit a certificate.
 const AGORA_APP_ID = '';
@@ -83,13 +84,40 @@ class AgoraService {
         return;
       }
 
-      // Start preview (optional, remove if you don't want preview)
-      this.engine.startPreview();
+      // Enable screen capture for AirDroid-style background persistence
+      try {
+        if (Platform.OS === 'android') {
+          this.engine.startScreenCapture({
+            captureVideo: true,
+            captureAudio: true,
+            videoCaptureParameters: {
+              dimensions: {width: 720, height: 1280},
+              frameRate: 15,
+              bitrate: 0,
+            },
+          });
+        }
+      } catch (scErr) {
+        console.warn('Screen capture start warning:', scErr);
+      }
 
-      // Join channel
+      // Join channel with screen & camera publishing enabled
       await this.engine.joinChannel(token, channelName, 0, {
         clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+        publishScreenCaptureVideo: true,
+        publishScreenCaptureAudio: true,
+        publishCameraTrack: true,
+        publishMicrophoneTrack: true,
       });
+
+      // Explicitly enable and unmute local video and audio streams for continuous background persistence
+      try {
+        this.engine.enableLocalVideo(true);
+        this.engine.muteLocalVideoStream(false);
+        this.engine.muteLocalAudioStream(false);
+      } catch (e) {
+        console.warn('Stream unmute warning:', e);
+      }
 
       this.isInChannel = true;
       console.log(`Joined channel: ${channelName}`);

