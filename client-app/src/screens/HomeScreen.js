@@ -169,7 +169,7 @@ const HomeScreen = ({navigation}) => {
         throw new Error('Camera and microphone permissions are required to start the live session.');
       }
 
-      await approveLiveSession(id);
+      await approveLiveSession(id, liveRequest._id);
       setLiveRequest(null);
 
       // Get Agora token after recording visible device approval.

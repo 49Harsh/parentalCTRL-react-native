@@ -95,9 +95,9 @@ export const sendHeartbeat = async (deviceId, status) => {
   }
 };
 
-export const approveLiveSession = async deviceId => {
+export const approveLiveSession = async (deviceId, requestId) => {
   try {
-    const response = await api.post(`/api/devices/${deviceId}/live-session/approve`);
+    const response = await api.post(`/api/devices/${deviceId}/live-session/approve`, {requestId});
     return response.data;
   } catch (error) {
     throw getApiError(error);

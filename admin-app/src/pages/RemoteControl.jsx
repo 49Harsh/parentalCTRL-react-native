@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
-import {getAdminToken, sendCommand, grantPersistentAccess, revokePersistentAccess} from '../services/api';
+import {getAdminToken, getCommand, sendCommand, grantPersistentAccess, revokePersistentAccess} from '../services/api';
 import agoraService from '../services/agoraService';
 
 export default function RemoteControl() {
@@ -12,85 +12,107 @@ export default function RemoteControl() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [connectionState, setConnectionState] = useState('Connecting...');
   const [persistentAccess, setPersistentAccess] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({width: 1080, height: 2400});
 
   useEffect(() => {
+    let cancelled = false;
+    let retryTimer;
+
+    const initializeRemoteSession = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        setConnectionState('Requesting device approval...');
+
+        // Always send a LIVE_SESSION_REQUEST first
+        const {command} = await sendCommand(uniqueId, 'LIVE_SESSION_REQUEST');
+
+        const waitForApproval = async () => {
+          if (cancelled) return;
+          const {command: latestCommand} = await getCommand(uniqueId, command._id);
+
+          if (latestCommand.status === 'accepted') {
+            setConnectionState('Approval received. Getting token...');
+            const tokenData = await getAdminToken(uniqueId);
+            if (!cancelled) await connectToStream(tokenData);
+            return;
+          }
+
+          if (latestCommand.status !== 'pending') {
+            throw new Error(
+              latestCommand.status === 'expired'
+                ? 'The device did not approve the session within 5 minutes. Make sure the device is online and try again.'
+                : `The session request was ${latestCommand.status}.`,
+            );
+          }
+
+          setConnectionState('Waiting for approval on the device...');
+          retryTimer = window.setTimeout(waitForApproval, 3000);
+        };
+
+        await waitForApproval();
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Remote session error:', err);
+        setError(err.message || 'Failed to initialize remote session');
+        setLoading(false);
+        setConnectionState('Connection failed');
+      }
+    };
+
     initializeRemoteSession();
+
     return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimer);
       agoraService.leaveChannel();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueId]);
-
-  const initializeRemoteSession = async () => {
-    try {
-      setLoading(true);
-      setError('');
-
-      // Check if persistent access exists
-      const tokenData = await getAdminToken(uniqueId);
-      
-      if (tokenData.success) {
-        await connectToStream(tokenData);
-        setPersistentAccess(true);
-      } else {
-        // Request new session
-        await requestLiveSession();
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to initialize remote session');
-      setLoading(false);
-    }
-  };
-
-  const requestLiveSession = async () => {
-    try {
-      const {command} = await sendCommand(uniqueId, 'LIVE_SESSION_REQUEST');
-      
-      // Poll for approval
-      const pollInterval = setInterval(async () => {
-        try {
-          const tokenData = await getAdminToken(uniqueId);
-          if (tokenData.success) {
-            clearInterval(pollInterval);
-            await connectToStream(tokenData);
-          }
-        } catch (err) {
-          // Still waiting for approval
-        }
-      }, 3000);
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (!connected) {
-          setError('Session request timed out. Please try again.');
-          setLoading(false);
-        }
-      }, 5 * 60 * 1000);
-    } catch (err) {
-      setError(err.message || 'Failed to request session');
-      setLoading(false);
-    }
-  };
 
   const connectToStream = async (tokenData) => {
     try {
-      await agoraService.initialize(tokenData.appId);
-      await agoraService.joinChannel(tokenData.channelName, tokenData.token);
-      
-      agoraService.on('user-published', async (user, mediaType) => {
-        await agoraService.subscribe(user, mediaType);
-        if (mediaType === 'video' && videoRef.current) {
-          user.videoTrack?.play(videoRef.current);
-        }
-      });
+      setConnectionState('Connecting to stream...');
 
-      setConnected(true);
+      if (!tokenData.success) {
+        throw new Error(tokenData.message || 'Failed to get token');
+      }
+
+      // Initialize Agora client
+      agoraService.initializeClient();
+
+      // Subscribe to remote user events
+      agoraService.subscribeToRemoteUser(
+        (videoTrack) => {
+          console.log('Video track received');
+          if (videoRef.current) {
+            videoTrack.play(videoRef.current);
+          }
+          setConnected(true);
+          setConnectionState('Connected');
+        },
+        () => {
+          console.log('Audio track received');
+        }
+      );
+
+      // Join channel with correct parameter order (appId, channel, token, uid)
+      await agoraService.joinChannel(
+        tokenData.appId,
+        tokenData.channel,
+        tokenData.token,
+        null
+      );
+
+      setPersistentAccess(false);
       setLoading(false);
+      setConnectionState('Waiting for stream...');
     } catch (err) {
       setError(err.message || 'Failed to connect to stream');
       setLoading(false);
+      setConnectionState('Connection failed');
     }
   };
 
@@ -133,14 +155,6 @@ export default function RemoteControl() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-white text-xl">Connecting to device...</div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -153,6 +167,39 @@ export default function RemoteControl() {
           >
             Back to Dashboard
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <svg 
+            className="animate-spin h-16 w-16 text-indigo-500 mx-auto mb-4" 
+            viewBox="0 0 24 24"
+          >
+            <circle 
+              className="opacity-25" 
+              cx="12" 
+              cy="12" 
+              r="10" 
+              stroke="currentColor" 
+              strokeWidth="4"
+            />
+            <path 
+              className="opacity-75" 
+              fill="currentColor" 
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <p className="text-white text-lg">{connectionState}</p>
+          {connectionState.includes('Waiting for approval') && (
+            <p className="text-gray-400 text-sm mt-3 max-w-md">
+              Open the client app on the device and tap "Approve and start" to begin the remote session.
+            </p>
+          )}
         </div>
       </div>
     );
