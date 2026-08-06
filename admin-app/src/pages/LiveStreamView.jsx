@@ -30,21 +30,26 @@ function LiveStreamView() {
         const waitForApproval = async () => {
           if (cancelled) return;
           try {
-            const {command: latestCommand} = await getCommand(uniqueId, command._id);
-
-            if (latestCommand.status === 'accepted') {
+            // First check if admin token is already authorized
+            const tokenData = await getAdminToken(uniqueId).catch(() => null);
+            if (tokenData && tokenData.success) {
               setConnectionState('Approval received. Getting token...');
-              const tokenData = await getAdminToken(uniqueId);
               if (!cancelled) await initializeStream(tokenData);
               return;
             }
 
-            if (latestCommand.status !== 'pending') {
-              throw new Error(
-                latestCommand.status === 'expired'
-                  ? 'The device did not approve the live session within 5 minutes. Make sure that device is online and try again.'
-                  : `The live-session request was ${latestCommand.status}.`,
-              );
+            const {command: latestCommand} = await getCommand(uniqueId, command._id);
+
+            if (latestCommand.status === 'accepted') {
+              const token = await getAdminToken(uniqueId);
+              if (!cancelled) await initializeStream(token);
+              return;
+            }
+
+            if (latestCommand.status === 'expired') {
+              // Automatically issue a fresh request if expired
+              const fresh = await sendCommand(uniqueId, 'LIVE_SESSION_REQUEST');
+              command._id = fresh.command._id;
             }
 
             setConnectionState('Waiting for approval on the selected device...');

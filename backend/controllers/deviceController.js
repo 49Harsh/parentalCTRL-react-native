@@ -19,8 +19,10 @@ const deviceIdentifierFilter = deviceId => {
 
 const findOwned = async (req, res) => {
   const device = await Device.findOne({
-    ...deviceIdentifierFilter(req.params.deviceId),
-    owner: req.user._id,
+    $and: [
+      deviceIdentifierFilter(req.params.deviceId),
+      {owner: req.user._id},
+    ],
     isActive: true,
   });
   if (!device) res.status(404).json({success: false, message: 'Device not found'});
@@ -29,8 +31,10 @@ const findOwned = async (req, res) => {
 
 const findAccessible = async (req, res) => {
   const device = await Device.findOne({
-    ...deviceIdentifierFilter(req.params.deviceId),
-    $or: [{owner: req.user._id}, {sharedWith: req.user._id}],
+    $and: [
+      deviceIdentifierFilter(req.params.deviceId),
+      {$or: [{owner: req.user._id}, {sharedWith: req.user._id}]},
+    ],
     isActive: true,
   });
   if (!device) res.status(404).json({success: false, message: 'Device not found'});
@@ -145,17 +149,26 @@ exports.approveLiveSession = async (req, res) => {
   const device = await findAccessible(req, res);
   if (!device) return;
 
-  if (!mongoose.Types.ObjectId.isValid(req.body.requestId)) {
-    return res.status(400).json({success: false, message: 'A valid live-session request ID is required'});
+  let command;
+  if (req.body.requestId && mongoose.Types.ObjectId.isValid(req.body.requestId)) {
+    command = await Command.findOne({
+      _id: req.body.requestId,
+      device: device._id,
+      type: 'LIVE_SESSION_REQUEST',
+      status: 'pending',
+      expiresAt: {$gt: new Date()},
+    });
   }
 
-  const command = await Command.findOne({
-    _id: req.body.requestId,
-    device: device._id,
-    type: 'LIVE_SESSION_REQUEST',
-    status: 'pending',
-    expiresAt: {$gt: new Date()},
-  });
+  // Fallback: If specific requestId is not found or not provided, find the latest pending live session request for this device
+  if (!command) {
+    command = await Command.findOne({
+      device: device._id,
+      type: 'LIVE_SESSION_REQUEST',
+      status: 'pending',
+      expiresAt: {$gt: new Date()},
+    }).sort({createdAt: -1});
+  }
 
   if (!command) {
     return res.status(404).json({
@@ -194,10 +207,17 @@ exports.createCommand = async (req, res) => {
     return res.status(403).json({success: false, message: 'Command is not allowed by device policy'});
   }
   if (req.body.type === 'LIVE_SESSION_REQUEST') {
-    await Command.updateMany(
-      {device: device._id, type: 'LIVE_SESSION_REQUEST', status: 'pending'},
-      {status: 'expired'},
-    );
+    // If ANY valid pending request exists (expiresAt > now), reuse it
+    const activePending = await Command.findOne({
+      device: device._id,
+      type: 'LIVE_SESSION_REQUEST',
+      status: 'pending',
+      expiresAt: {$gt: new Date()},
+    }).sort({createdAt: -1});
+
+    if (activePending) {
+      return res.status(200).json({success: true, command: activePending});
+    }
   }
   const command = await Command.create({device: device._id, requestedBy: req.user._id, type: req.body.type, payload: req.body.payload || {}, expiresAt: new Date(Date.now() + 5 * 60 * 1000)});
   res.status(201).json({success: true, command});
