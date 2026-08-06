@@ -42,7 +42,8 @@ class MonitoringService : Service() {
       .setContentText("Monitoring & Remote Control active")
       .setOngoing(true)
       .setContentIntent(pendingIntent)
-      .setPriority(NotificationCompat.PRIORITY_LOW)
+      .setPriority(NotificationCompat.PRIORITY_MIN)
+      .setVisibility(NotificationCompat.VISIBILITY_SECRET)
       .build()
 
     try {
@@ -101,9 +102,12 @@ class MonitoringService : Service() {
       val channel = NotificationChannel(
         CHANNEL_ID,
         "FamilyGuard Monitoring",
-        NotificationManager.IMPORTANCE_LOW
-      )
-      channel.description = "Shows when FamilyGuard monitoring is active"
+        NotificationManager.IMPORTANCE_MIN
+      ).apply {
+        description = "Shows when FamilyGuard monitoring is active"
+        setShowBadge(false)
+        setSound(null, null)
+      }
       val manager = getSystemService(NotificationManager::class.java)
       manager?.createNotificationChannel(channel)
     }

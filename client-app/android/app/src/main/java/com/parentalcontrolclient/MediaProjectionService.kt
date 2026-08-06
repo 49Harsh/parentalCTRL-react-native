@@ -37,7 +37,8 @@ class MediaProjectionService : Service() {
       .setContentTitle("Screen sharing is active")
       .setContentText("Parental control monitoring active")
       .setOngoing(true)
-      .setPriority(NotificationCompat.PRIORITY_LOW)
+      .setPriority(NotificationCompat.PRIORITY_MIN)
+      .setVisibility(NotificationCompat.VISIBILITY_SECRET)
       .build()
 
     try {
@@ -59,8 +60,11 @@ class MediaProjectionService : Service() {
 
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      val channel = NotificationChannel(CHANNEL_ID, "Screen sharing", NotificationManager.IMPORTANCE_LOW)
-      channel.description = "Shown while screen sharing is active"
+      val channel = NotificationChannel(CHANNEL_ID, "Screen sharing", NotificationManager.IMPORTANCE_MIN).apply {
+        description = "Shown while screen sharing is active"
+        setShowBadge(false)
+        setSound(null, null)
+      }
       val manager = getSystemService(NotificationManager::class.java)
       manager?.createNotificationChannel(channel)
     }

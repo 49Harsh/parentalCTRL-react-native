@@ -38,3 +38,8 @@ export const requestScreenCapture =
   Platform.OS === 'android' && native
     ? () => native.requestScreenCapture()
     : unavailable;
+
+export const isScreenCaptureActive =
+  Platform.OS === 'android' && native
+    ? () => native.isScreenCaptureActive()
+    : unavailable;

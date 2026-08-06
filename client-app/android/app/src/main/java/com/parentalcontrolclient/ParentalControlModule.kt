@@ -35,6 +35,11 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun isScreenCaptureActive(promise: Promise) {
+    promise.resolve(MediaProjectionService.mediaProjection != null)
+  }
+
+  @ReactMethod
   fun openNotificationAccessSettings(promise: Promise) = openSettings(
     Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
     promise,

@@ -17,7 +17,11 @@ import agoraService from '../services/agoraService';
 import remoteControl from '../services/remoteControl';
 import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
 import {checkPermissions, promptOpenSettings, requestPermissions} from '../services/permissions';
-import {startMonitoringService} from '../services/nativeMonitoring';
+import {
+  isScreenCaptureActive,
+  requestScreenCapture,
+  startMonitoringService,
+} from '../services/nativeMonitoring';
 import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
 
 const {ParentalControl} = NativeModules;
@@ -187,6 +191,12 @@ const HomeScreen = ({navigation}) => {
         await approveLiveSession(id, targetReqId).catch(() => {});
       }
 
+      // Check if screen capture is already active in background
+      const captureActive = await isScreenCaptureActive();
+      if (!captureActive) {
+        await requestScreenCapture().catch(() => {});
+      }
+
       // Get Agora token after device approval
       const tokenData = await getClientToken(id);
 
@@ -208,6 +218,7 @@ const HomeScreen = ({navigation}) => {
           setStreaming(false);
         },
         onError: (err, msg) => {
+          if (err === 1052 || err === -1052) return;
           console.error('Streaming error:', err, msg);
         },
       });

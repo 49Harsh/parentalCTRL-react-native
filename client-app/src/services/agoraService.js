@@ -236,6 +236,8 @@ class AgoraService {
         handlers.onUserOffline?.(connection, remoteUid, reason);
       },
       onError: (err, msg) => {
+        // Agora error 1052 / ERR_REFUSED is a non-critical internal warning when publishing camera alongside screen capture
+        if (err === 1052 || err === -1052) return;
         console.error('Agora error:', err, msg);
         handlers.onError?.(err, msg);
       },
