@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const deviceSchema = new mongoose.Schema({
   owner: {type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true},
+  sharedWith: [{type: mongoose.Schema.Types.ObjectId, ref: 'User'}],
   name: {type: String, required: true, trim: true, maxlength: 80},
   platform: {type: String, default: 'android', enum: ['android']},
   uniqueId: {type: String, required: true, unique: true, uppercase: true, trim: true, minlength: 10, maxlength: 10},
@@ -23,5 +24,6 @@ const deviceSchema = new mongoose.Schema({
 }, {timestamps: true});
 
 deviceSchema.index({owner: 1, createdAt: -1});
+deviceSchema.index({sharedWith: 1, createdAt: -1});
 
 module.exports = mongoose.model('Device', deviceSchema);

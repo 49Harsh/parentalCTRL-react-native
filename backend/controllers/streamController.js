@@ -1,12 +1,21 @@
 const Device = require('../models/Device');
 const Command = require('../models/Command');
+const mongoose = require('mongoose');
 const {generateAdminToken, generateClientToken} = require('../utils/agoraToken');
 
-const getOwnedDevice = async (req) => Device.findOne({
-  $or: [{_id: req.params.deviceId}, {uniqueId: String(req.params.deviceId).toUpperCase()}],
-  owner: req.user._id,
-  isActive: true,
-});
+const getOwnedDevice = async (req) => {
+  const deviceId = req.params.deviceId;
+  const query = {owner: req.user._id, isActive: true};
+  
+  // Check if deviceId is a valid ObjectId
+  if (mongoose.Types.ObjectId.isValid(deviceId)) {
+    query.$or = [{_id: deviceId}, {uniqueId: String(deviceId).toUpperCase()}];
+  } else {
+    query.uniqueId = String(deviceId).toUpperCase();
+  }
+  
+  return Device.findOne(query);
+};
 
 const verifyDevice = async (req, res) => {
   const device = await getOwnedDevice(req);

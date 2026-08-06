@@ -55,8 +55,13 @@ const HomeScreen = ({navigation}) => {
 
     const checkForLiveRequest = async () => {
       try {
+        console.log('Sending heartbeat for deviceId:', deviceId);
         const sync = await sendHeartbeat(deviceId, {appVersion: '0.0.1'});
+        console.log('Heartbeat response:', JSON.stringify(sync, null, 2));
+        
         const request = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST');
+        console.log('Live request found:', request ? 'YES' : 'NO');
+        
         setLiveRequest(request || null);
         setPolicyMessage(
           request

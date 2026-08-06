@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Device = require('../models/Device');
 const Policy = require('../models/Policy');
 const Command = require('../models/Command');
@@ -8,14 +9,39 @@ const NotificationEvent = require('../models/NotificationEvent');
 
 const makeId = () => crypto.randomBytes(8).toString('base64url').replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase();
 
+const deviceIdentifierFilter = deviceId => {
+  const value = String(deviceId || '').trim();
+  const identifiers = mongoose.Types.ObjectId.isValid(value)
+    ? [{_id: value}, {uniqueId: value.toUpperCase()}]
+    : [{uniqueId: value.toUpperCase()}];
+  return {$or: identifiers};
+};
+
 const findOwned = async (req, res) => {
-  const device = await Device.findOne({_id: req.params.deviceId, owner: req.user._id, isActive: true});
+  const device = await Device.findOne({
+    ...deviceIdentifierFilter(req.params.deviceId),
+    owner: req.user._id,
+    isActive: true,
+  });
+  if (!device) res.status(404).json({success: false, message: 'Device not found'});
+  return device;
+};
+
+const findAccessible = async (req, res) => {
+  const device = await Device.findOne({
+    ...deviceIdentifierFilter(req.params.deviceId),
+    $or: [{owner: req.user._id}, {sharedWith: req.user._id}],
+    isActive: true,
+  });
   if (!device) res.status(404).json({success: false, message: 'Device not found'});
   return device;
 };
 
 exports.list = async (req, res) => {
-  const devices = await Device.find({owner: req.user._id, isActive: true}).sort({createdAt: -1});
+  const devices = await Device.find({
+    $or: [{owner: req.user._id}, {sharedWith: req.user._id}],
+    isActive: true,
+  }).sort({createdAt: -1});
   res.json({success: true, devices});
 };
 
@@ -29,15 +55,32 @@ exports.enroll = async (req, res) => {
   res.status(201).json({success: true, device, policy});
 };
 
+exports.pair = async (req, res) => {
+  const uniqueId = String(req.body.uniqueId || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(uniqueId)) {
+    return res.status(400).json({success: false, message: 'Enter the device pairing ID shown in the client app'});
+  }
+
+  const device = await Device.findOne({uniqueId, isActive: true});
+  if (!device) return res.status(404).json({success: false, message: 'No active device was found for that pairing ID'});
+  if (device.owner.equals(req.user._id)) {
+    return res.status(400).json({success: false, message: 'This device already belongs to your account'});
+  }
+
+  await Device.updateOne({_id: device._id}, {$addToSet: {sharedWith: req.user._id}});
+  const pairedDevice = await Device.findById(device._id);
+  res.json({success: true, device: pairedDevice, message: 'Device paired successfully'});
+};
+
 exports.get = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
   const policy = await Policy.findOne({device: device._id});
   res.json({success: true, device, policy});
 };
 
 exports.update = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
   if (req.body.name) device.name = String(req.body.name).trim();
   if (typeof req.body.monitoringEnabled === 'boolean') device.monitoringEnabled = req.body.monitoringEnabled;
@@ -57,24 +100,62 @@ exports.revoke = async (req, res) => {
 exports.heartbeat = async (req, res) => {
   const device = await findOwned(req, res);
   if (!device) return;
+
+  const completedCommandIds = Array.isArray(req.body.completedCommandIds)
+    ? req.body.completedCommandIds.filter(id => mongoose.Types.ObjectId.isValid(id)).slice(0, 50)
+    : [];
+  if (req.body.lastCommandStatus === 'executed' && mongoose.Types.ObjectId.isValid(req.body.lastCommandId)) {
+    completedCommandIds.push(req.body.lastCommandId);
+  }
+
+  if (completedCommandIds.length) {
+    await Command.updateMany(
+      {
+        _id: {$in: completedCommandIds},
+        device: device._id,
+        type: {$in: ['REMOTE_TOUCH', 'REMOTE_ACTION']},
+        status: 'pending',
+      },
+      {status: 'completed', acknowledgedAt: new Date()},
+    );
+  }
+
+  const {completedCommandIds: ignoredCompletedIds, lastCommandId, lastCommandStatus, ...status} = req.body;
   device.lastSeenAt = new Date();
-  device.status = {...device.status?.toObject?.(), ...req.body};
+  device.status = {...device.status?.toObject?.(), ...status};
   await device.save();
+
+  await Command.updateMany(
+    {device: device._id, status: 'pending', expiresAt: {$lte: new Date()}},
+    {status: 'expired'},
+  );
   const policy = await Policy.findOne({device: device._id});
   const commands = await Command.find({device: device._id, status: 'pending', expiresAt: {$gt: new Date()}}).sort({createdAt: 1});
-  res.json({success: true, policy, commands});
+  const activeLiveRequest = await Command.findOne({
+    device: device._id,
+    type: 'LIVE_SESSION_REQUEST',
+    status: 'accepted',
+    expiresAt: {$gt: new Date()},
+  }).sort({acknowledgedAt: -1});
+
+  res.json({success: true, policy, commands, activeLiveRequest});
 };
 
 exports.approveLiveSession = async (req, res) => {
   const device = await findOwned(req, res);
   if (!device) return;
 
-  let command = await Command.findOne({
+  if (!mongoose.Types.ObjectId.isValid(req.body.requestId)) {
+    return res.status(400).json({success: false, message: 'A valid live-session request ID is required'});
+  }
+
+  const command = await Command.findOne({
+    _id: req.body.requestId,
     device: device._id,
     type: 'LIVE_SESSION_REQUEST',
     status: 'pending',
     expiresAt: {$gt: new Date()},
-  }).sort({createdAt: -1});
+  });
 
   if (!command) {
     return res.status(404).json({
@@ -85,6 +166,7 @@ exports.approveLiveSession = async (req, res) => {
 
   command.status = 'accepted';
   command.acknowledgedAt = new Date();
+  command.expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   command.payload = {...command.payload, approvedOnDevice: true};
   await command.save();
 

@@ -11,7 +11,7 @@ const policySchema = new mongoose.Schema({
   appLimits: [{packageName: String, label: String, minutes: {type: Number, min: 0, max: 1440}}],
   locationSharing: {type: Boolean, default: false},
   usageSharing: {type: Boolean, default: false},
-  allowedCommands: [{type: String, enum: ['STATUS_REFRESH', 'RING', 'LOCATION_REFRESH', 'LIVE_SESSION_REQUEST', 'SYNC_POLICY', 'END_SESSION']}],
+  allowedCommands: [{type: String, enum: ['STATUS_REFRESH', 'RING', 'LOCATION_REFRESH', 'LIVE_SESSION_REQUEST', 'REMOTE_TOUCH', 'REMOTE_ACTION', 'SYNC_POLICY', 'END_SESSION']}],
 }, {timestamps: true});
 
 module.exports = mongoose.model('Policy', policySchema);
