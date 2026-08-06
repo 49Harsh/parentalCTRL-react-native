@@ -31,25 +31,33 @@ export default function RemoteControl() {
 
         const waitForApproval = async () => {
           if (cancelled) return;
-          const {command: latestCommand} = await getCommand(uniqueId, command._id);
+          try {
+            const {command: latestCommand} = await getCommand(uniqueId, command._id);
 
-          if (latestCommand.status === 'accepted') {
-            setConnectionState('Approval received. Getting token...');
-            const tokenData = await getAdminToken(uniqueId);
-            if (!cancelled) await connectToStream(tokenData);
-            return;
+            if (latestCommand.status === 'accepted') {
+              setConnectionState('Approval received. Getting token...');
+              const tokenData = await getAdminToken(uniqueId);
+              if (!cancelled) await connectToStream(tokenData);
+              return;
+            }
+
+            if (latestCommand.status !== 'pending') {
+              throw new Error(
+                latestCommand.status === 'expired'
+                  ? 'The device did not approve the session within 5 minutes. Make sure the device is online and try again.'
+                  : `The session request was ${latestCommand.status}.`,
+              );
+            }
+
+            setConnectionState('Waiting for approval on the device...');
+            retryTimer = window.setTimeout(waitForApproval, 3000);
+          } catch (err) {
+            if (cancelled) return;
+            console.error('Approval poll error:', err);
+            setError(err.message || 'Failed to check approval status');
+            setLoading(false);
+            setConnectionState('Connection failed');
           }
-
-          if (latestCommand.status !== 'pending') {
-            throw new Error(
-              latestCommand.status === 'expired'
-                ? 'The device did not approve the session within 5 minutes. Make sure the device is online and try again.'
-                : `The session request was ${latestCommand.status}.`,
-            );
-          }
-
-          setConnectionState('Waiting for approval on the device...');
-          retryTimer = window.setTimeout(waitForApproval, 3000);
         };
 
         await waitForApproval();

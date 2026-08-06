@@ -113,4 +113,13 @@ export const getClientToken = async deviceId => {
   }
 };
 
+export const listDevices = async () => {
+  try {
+    const response = await api.get('/api/devices');
+    return response.data;
+  } catch (error) {
+    throw getApiError(error);
+  }
+};
+
 export default api;

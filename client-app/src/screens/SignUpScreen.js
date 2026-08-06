@@ -12,22 +12,28 @@ import {
   ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {enrollDevice, register} from '../services/api';
+import {enrollDevice, register, login, listDevices} from '../services/api';
 
 const SignUpScreen = ({navigation}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isLoginMode, setIsLoginMode] = useState(false);
 
   const validateEmail = value => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(value);
   };
 
-  const handleSignUp = async () => {
+  const handleAuth = async () => {
     // Validation
-    if (!name || !email || !password) {
+    if (!isLoginMode && !name) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    
+    if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -45,26 +51,45 @@ const SignUpScreen = ({navigation}) => {
     setLoading(true);
 
     try {
-      // Register user
-      const response = await register(name.trim(), email.trim().toLowerCase(), password);
+      if (isLoginMode) {
+        const response = await login(email.trim().toLowerCase(), password);
+        if (response.success) {
+          await AsyncStorage.setItem('userName', response.user.name);
+          await AsyncStorage.setItem('userEmail', response.user.email);
+          await AsyncStorage.setItem('uniqueId', response.user.uniqueId);
+          await AsyncStorage.setItem('authToken', response.token);
+          
+          const devicesResponse = await listDevices();
+          if (devicesResponse.success && devicesResponse.devices && devicesResponse.devices.length > 0) {
+            const firstDevice = devicesResponse.devices[0];
+            await AsyncStorage.setItem('deviceId', firstDevice._id);
+            await AsyncStorage.setItem('uniqueId', firstDevice.uniqueId);
+          } else {
+            const enrollment = await enrollDevice(`${response.user.name}'s Android`);
+            await AsyncStorage.setItem('deviceId', enrollment.device._id);
+            await AsyncStorage.setItem('uniqueId', enrollment.device.uniqueId);
+          }
+          navigation.replace('Setup');
+        }
+      } else {
+        const response = await register(name.trim(), email.trim().toLowerCase(), password);
 
-      if (response.success) {
-        // Save user data to AsyncStorage
-        await AsyncStorage.setItem('userName', response.user.name);
-        await AsyncStorage.setItem('userEmail', response.user.email);
-        await AsyncStorage.setItem('uniqueId', response.user.uniqueId);
-        await AsyncStorage.setItem('authToken', response.token);
-        const enrollment = await enrollDevice(`${response.user.name}'s Android`);
-        await AsyncStorage.setItem('deviceId', enrollment.device._id);
-        await AsyncStorage.setItem('uniqueId', enrollment.device.uniqueId);
+        if (response.success) {
+          await AsyncStorage.setItem('userName', response.user.name);
+          await AsyncStorage.setItem('userEmail', response.user.email);
+          await AsyncStorage.setItem('uniqueId', response.user.uniqueId);
+          await AsyncStorage.setItem('authToken', response.token);
+          const enrollment = await enrollDevice(`${response.user.name}'s Android`);
+          await AsyncStorage.setItem('deviceId', enrollment.device._id);
+          await AsyncStorage.setItem('uniqueId', enrollment.device.uniqueId);
 
-        // The setup screen explains and requests each Android capability separately.
-        navigation.replace('Setup');
+          navigation.replace('Setup');
+        }
       }
     } catch (error) {
-      console.error('Sign up error:', error);
+      console.error('Auth error:', error);
       Alert.alert(
-        'Registration Failed',
+        isLoginMode ? 'Login Failed' : 'Registration Failed',
         error.message || 'Something went wrong. Please try again.',
       );
     } finally {
@@ -81,18 +106,20 @@ const SignUpScreen = ({navigation}) => {
         keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <Text style={styles.title}>Parental Control</Text>
-          <Text style={styles.subtitle}>Create Your Account</Text>
+          <Text style={styles.subtitle}>{isLoginMode ? 'Log In to Your Account' : 'Create Your Account'}</Text>
 
           <View style={styles.form}>
-            <TextInput
-              style={styles.input}
-              placeholder="Full Name"
-              placeholderTextColor="#999"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              editable={!loading}
-            />
+            {!isLoginMode && (
+              <TextInput
+                style={styles.input}
+                placeholder="Full Name"
+                placeholderTextColor="#999"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                editable={!loading}
+              />
+            )}
 
             <TextInput
               style={styles.input}
@@ -118,19 +145,31 @@ const SignUpScreen = ({navigation}) => {
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleSignUp}
+              onPress={handleAuth}
               disabled={loading}>
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Sign Up</Text>
+                <Text style={styles.buttonText}>{isLoginMode ? 'Log In' : 'Sign Up'}</Text>
               )}
             </TouchableOpacity>
 
-            <Text style={styles.infoText}>
-              After registration, you will receive a unique 10-character ID for
-              remote monitoring.
-            </Text>
+            {!isLoginMode && (
+              <Text style={styles.infoText}>
+                After registration, you will receive a unique 10-character ID for
+                remote monitoring.
+              </Text>
+            )}
+
+            <TouchableOpacity 
+              style={styles.toggleModeButton} 
+              onPress={() => setIsLoginMode(!isLoginMode)}
+              disabled={loading}
+            >
+              <Text style={styles.toggleModeText}>
+                {isLoginMode ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -204,6 +243,15 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  toggleModeButton: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  toggleModeText: {
+    color: '#4F46E5',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

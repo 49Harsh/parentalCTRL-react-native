@@ -98,7 +98,7 @@ exports.revoke = async (req, res) => {
 };
 
 exports.heartbeat = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
 
   const completedCommandIds = Array.isArray(req.body.completedCommandIds)
@@ -142,7 +142,7 @@ exports.heartbeat = async (req, res) => {
 };
 
 exports.approveLiveSession = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
 
   if (!mongoose.Types.ObjectId.isValid(req.body.requestId)) {
@@ -186,7 +186,7 @@ exports.updatePolicy = async (req, res) => {
 };
 
 exports.createCommand = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
   const policy = await Policy.findOne({device: device._id});
   const alwaysAllowed = ['LIVE_SESSION_REQUEST', 'END_SESSION'];
@@ -204,14 +204,14 @@ exports.createCommand = async (req, res) => {
 };
 
 exports.listCommands = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
   const commands = await Command.find({device: device._id}).sort({createdAt: -1}).limit(100);
   res.json({success: true, commands});
 };
 
 exports.getCommand = async (req, res) => {
-  const device = await findOwned(req, res);
+  const device = await findAccessible(req, res);
   if (!device) return;
 
   const command = await Command.findOne({_id: req.params.commandId, device: device._id});
