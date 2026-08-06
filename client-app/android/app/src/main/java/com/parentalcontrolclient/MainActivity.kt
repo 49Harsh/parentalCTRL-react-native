@@ -30,7 +30,11 @@ class MainActivity : ReactActivity() {
     val promise = screenCapturePromise
     screenCapturePromise = null
     if (resultCode == Activity.RESULT_OK && data != null) {
-      startForegroundService(Intent(this, MediaProjectionService::class.java))
+      val serviceIntent = Intent(this, MediaProjectionService::class.java).apply {
+        putExtra("resultCode", resultCode)
+        putExtra("data", data)
+      }
+      startForegroundService(serviceIntent)
       promise?.resolve(true)
     } else {
       promise?.reject("CAPTURE_DENIED", "Screen-sharing permission was not granted")

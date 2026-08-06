@@ -53,11 +53,7 @@ const HomeScreen = ({navigation}) => {
 
   useEffect(() => {
     loadUserData();
-
-    return () => {
-      // Cleanup on unmount
-      agoraService.leaveChannel();
-    };
+    // Do NOT leave Agora channel on unmount so stream stays alive 24/7 in background
   }, []);
 
   useEffect(() => {

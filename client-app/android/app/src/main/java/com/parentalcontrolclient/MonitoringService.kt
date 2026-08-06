@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.facebook.react.HeadlessJsTaskService
 
 class MonitoringService : Service() {
   override fun onCreate() {
@@ -60,7 +61,39 @@ class MonitoringService : Service() {
       }
     }
 
+    try {
+      val headlessIntent = Intent(applicationContext, BackgroundSyncHeadlessService::class.java)
+      applicationContext.startService(headlessIntent)
+      HeadlessJsTaskService.acquireWakeLockNow(applicationContext)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+
     return START_STICKY
+  }
+
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    try {
+      val restartServiceIntent = Intent(applicationContext, this.javaClass).apply {
+        setPackage(packageName)
+        action = ACTION_START
+      }
+      val restartServicePendingIntent = android.app.PendingIntent.getService(
+        applicationContext,
+        1,
+        restartServiceIntent,
+        android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE
+      )
+      val alarmService = applicationContext.getSystemService(android.content.Context.ALARM_SERVICE) as? android.app.AlarmManager
+      alarmService?.set(
+        android.app.AlarmManager.RTC_WAKEUP,
+        System.currentTimeMillis() + 1000,
+        restartServicePendingIntent
+      )
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+    super.onTaskRemoved(rootIntent)
   }
 
   private fun createNotificationChannel() {

