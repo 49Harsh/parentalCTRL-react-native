@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
-  Linking,
   TouchableOpacity,
-  NativeModules,
   PermissionsAndroid,
   Platform,
 } from 'react-native';
@@ -18,13 +16,13 @@ import remoteControl from '../services/remoteControl';
 import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
 import {checkPermissions, promptOpenSettings, requestPermissions} from '../services/permissions';
 import {
+  isAccessibilityServiceEnabled,
   isScreenCaptureActive,
+  openAccessibilitySettings,
   requestScreenCapture,
   startMonitoringService,
 } from '../services/nativeMonitoring';
 import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
-
-const {ParentalControl} = NativeModules;
 
 const HomeScreen = ({navigation}) => {
   const [loading, setLoading] = useState(true);
@@ -36,6 +34,7 @@ const HomeScreen = ({navigation}) => {
   const [liveRequest, setLiveRequest] = useState(null);
   const [policyMessage, setPolicyMessage] = useState('Waiting for a parent to request a visible live session.');
   const [serviceActive, setServiceActive] = useState(false);
+  const lastStreamAttemptRef = useRef(0);
 
   const handleEnableBackgroundService = async () => {
     try {
@@ -58,6 +57,7 @@ const HomeScreen = ({navigation}) => {
   useEffect(() => {
     loadUserData();
     // Do NOT leave Agora channel on unmount so stream stays alive 24/7 in background
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -107,6 +107,7 @@ const HomeScreen = ({navigation}) => {
     checkForLiveRequest();
     const interval = setInterval(checkForLiveRequest, 3000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId, streaming, startingStream]);
 
   const handleAppStateChange = nextAppState => {
@@ -139,6 +140,12 @@ const HomeScreen = ({navigation}) => {
 
   const handleRemoteCommand = async (command) => {
     try {
+      const accEnabled = await isAccessibilityServiceEnabled();
+      if (!accEnabled) {
+        console.warn('Remote command received, but Accessibility service is not enabled on device.');
+        return;
+      }
+
       const {type, payload} = command;
       
       if (type === 'REMOTE_TOUCH') {
@@ -172,13 +179,25 @@ const HomeScreen = ({navigation}) => {
         lastCommandStatus: 'executed',
       });
     } catch (error) {
-      console.error('Failed to execute remote command:', error);
+      console.warn('Failed to execute remote command:', error?.message || error);
     }
   };
 
-  const startStreaming = async (id = deviceId, targetReqId = liveRequest?._id) => {
+  const startStreaming = async (id = deviceId, targetReqId = liveRequest?._id, isManual = false) => {
     try {
       if (!id || startingStream || streaming) return;
+
+      if (agoraService.isInChannel) {
+        setStreaming(true);
+        return;
+      }
+
+      const now = Date.now();
+      if (!isManual && now - lastStreamAttemptRef.current < 10000) {
+        return;
+      }
+      lastStreamAttemptRef.current = now;
+
       setStartingStream(true);
       console.log('Starting stream for:', id);
 
@@ -201,7 +220,7 @@ const HomeScreen = ({navigation}) => {
       const tokenData = await getClientToken(id);
 
       if (!tokenData.success) {
-        throw new Error('Failed to get streaming token');
+        throw new Error(tokenData.message || 'Failed to get streaming token');
       }
 
       // Initialize Agora
@@ -226,11 +245,13 @@ const HomeScreen = ({navigation}) => {
       // Join channel
       await agoraService.joinChannel(tokenData.channel, tokenData.token);
     } catch (error) {
-      console.error('Error starting stream:', error);
-      Alert.alert(
-        'Streaming Error',
-        error.message || 'Failed to start streaming. Please try again.',
-      );
+      console.warn('Error starting stream:', error?.message || error);
+      if (isManual) {
+        Alert.alert(
+          'Streaming Error',
+          error.message || 'Failed to start streaming. Please try again.',
+        );
+      }
     } finally {
       setStartingStream(false);
     }
@@ -299,7 +320,7 @@ const HomeScreen = ({navigation}) => {
               styles.consentButton,
               (!liveRequest || startingStream || streaming) && styles.buttonDisabled,
             ]}
-            onPress={() => startStreaming(deviceId)}
+            onPress={() => startStreaming(deviceId, liveRequest?._id, true)}
             disabled={!liveRequest || startingStream || streaming}>
             {startingStream ? (
               <ActivityIndicator color="#fff" />

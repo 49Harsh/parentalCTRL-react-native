@@ -43,3 +43,14 @@ export const isScreenCaptureActive =
   Platform.OS === 'android' && native
     ? () => native.isScreenCaptureActive()
     : unavailable;
+
+export const isAccessibilityServiceEnabled =
+  Platform.OS === 'android' && native
+    ? () => native.isAccessibilityServiceEnabled()
+    : unavailable;
+
+export const openAccessibilitySettings =
+  Platform.OS === 'android' && native
+    ? () => native.openAccessibilitySettings()
+    : unavailable;
+

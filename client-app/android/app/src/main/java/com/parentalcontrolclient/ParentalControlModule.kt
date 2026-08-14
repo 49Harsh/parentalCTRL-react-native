@@ -79,12 +79,16 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun requestScreenCapture(promise: Promise) {
-    val activity = reactApplicationContext.currentActivity as? MainActivity
-    if (activity == null) {
-      promise.reject("NO_ACTIVITY", "Open the app before starting screen sharing")
+    if (MediaProjectionService.mediaProjection != null) {
+      promise.resolve(true)
       return
     }
-    activity.requestScreenCapture(promise)
+    val activity = reactApplicationContext.currentActivity as? MainActivity
+    if (activity != null) {
+      activity.requestScreenCapture(promise)
+    } else {
+      MediaProjectionPermissionActivity.launch(reactContext, promise)
+    }
   }
 
   @ReactMethod
