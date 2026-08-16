@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
 const streamRoutes = require('./routes/stream');
 const deviceRoutes = require('./routes/devices');
+const screenStreamRoutes = require('./routes/screenStream');
 
 // Initialize Express app
 const app = express();
@@ -19,7 +20,13 @@ app.set('trust proxy', 1);
 app.use(helmet());
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(value => value.trim());
 app.use(cors({origin: allowedOrigins, credentials: true}));
-app.use(rateLimit({windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false}));
+// Screen frame relay is mounted before the global rate limiter and JSON cap:
+// frames are large and high-frequency, so it applies its own limits/parser.
+app.use('/api/devices', screenStreamRoutes);
+// Devices poll the heartbeat endpoint every ~3 s (20 req/min per device), so
+// the global cap must comfortably exceed one device's polling rate plus
+// admin traffic; frame uploads live on their own per-route limiters.
+app.use(rateLimit({windowMs: 15 * 60 * 1000, limit: 3000, standardHeaders: true, legacyHeaders: false}));
 app.use(express.json({limit: '256kb'}));
 app.use(express.urlencoded({extended: true, limit: '256kb'}));
 

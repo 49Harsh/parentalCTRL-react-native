@@ -31,4 +31,13 @@ export const verifyUniqueId = id => api.get(`/api/stream/verify/${id}`).then(r =
 export const getAdminToken = id => api.get(`/api/stream/token/admin/${id}`).then(r => r.data);
 export const grantPersistentAccess = id => api.post(`/api/devices/${id}/persistent-access/grant`).then(r => r.data);
 export const revokePersistentAccess = id => api.post(`/api/devices/${id}/persistent-access/revoke`).then(r => r.data);
+export const startScreenStreamCommand = (id, fps = 12) => api.post(`/api/devices/${id}/commands`, {type: 'SCREEN_STREAM_START', payload: {fps}}).then(r => r.data);
+export const stopScreenStreamCommand = id => api.post(`/api/devices/${id}/commands`, {type: 'SCREEN_STREAM_STOP', payload: {}}).then(r => r.data);
+
+// Polling-based screen capture: returns the latest frame from the relay.
+export const pollScreenFrame = id => api.get(`/api/devices/${id}/last-frame`).then(r => r.data);
+
+// Diagnostic info: subscriber count and last-frame metadata.
+export const getScreenStreamStatus = id => api.get(`/api/devices/${id}/screen-status`).then(r => r.data);
+
 export default api;

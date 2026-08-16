@@ -117,7 +117,7 @@ exports.heartbeat = async (req, res) => {
       {
         _id: {$in: completedCommandIds},
         device: device._id,
-        type: {$in: ['REMOTE_TOUCH', 'REMOTE_ACTION']},
+        type: {$in: ['REMOTE_TOUCH', 'REMOTE_ACTION', 'SCREEN_STREAM_START', 'SCREEN_STREAM_STOP']},
         status: 'pending',
       },
       {status: 'completed', acknowledgedAt: new Date()},
@@ -202,7 +202,7 @@ exports.createCommand = async (req, res) => {
   const device = await findAccessible(req, res);
   if (!device) return;
   const policy = await Policy.findOne({device: device._id});
-  const alwaysAllowed = ['LIVE_SESSION_REQUEST', 'END_SESSION'];
+  const alwaysAllowed = ['LIVE_SESSION_REQUEST', 'END_SESSION', 'SCREEN_STREAM_START', 'SCREEN_STREAM_STOP'];
   if (!alwaysAllowed.includes(req.body.type) && !policy?.allowedCommands.includes(req.body.type)) {
     return res.status(403).json({success: false, message: 'Command is not allowed by device policy'});
   }

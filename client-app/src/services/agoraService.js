@@ -128,6 +128,29 @@ class AgoraService {
   }
 
   /**
+   * Restart screen capture stream on media projection re-acquisition
+   */
+  restartScreenCapture() {
+    try {
+      if (this.engine && Platform.OS === 'android') {
+        this.engine.stopScreenCapture();
+        this.engine.startScreenCapture({
+          captureVideo: true,
+          captureAudio: true,
+          videoCaptureParameters: {
+            dimensions: {width: 720, height: 1280},
+            frameRate: 15,
+            bitrate: 0,
+          },
+        });
+        console.log('Agora screen capture restarted successfully');
+      }
+    } catch (e) {
+      console.warn('Restart screen capture warning:', e);
+    }
+  }
+
+  /**
    * Leave channel and cleanup
    */
   async leaveChannel() {

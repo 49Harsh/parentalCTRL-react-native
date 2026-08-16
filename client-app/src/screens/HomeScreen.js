@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import agoraService from '../services/agoraService';
 import remoteControl from '../services/remoteControl';
+import screenStream from '../services/screenStream';
 import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
 import {checkPermissions, promptOpenSettings, requestPermissions} from '../services/permissions';
 import {
@@ -34,7 +35,28 @@ const HomeScreen = ({navigation}) => {
   const [liveRequest, setLiveRequest] = useState(null);
   const [policyMessage, setPolicyMessage] = useState('Waiting for a parent to request a visible live session.');
   const [serviceActive, setServiceActive] = useState(false);
+  const [accessibilityOn, setAccessibilityOn] = useState(null);
   const lastStreamAttemptRef = useRef(0);
+
+  const refreshAccessibilityStatus = async () => {
+    try {
+      const enabled = await isAccessibilityServiceEnabled();
+      setAccessibilityOn(enabled);
+    } catch (err) {
+      console.warn('Accessibility status check failed:', err);
+    }
+  };
+
+  const promptEnableAccessibility = () => {
+    Alert.alert(
+      'Accessibility Service Required',
+      'See Screen and Remote Control need the "FamilyGuard remote control" accessibility service.\n\nIf Android shows "Restricted setting": open Settings → Apps → FamilyGuard → ⋮ menu → "Allow restricted settings" first, then enable it under Settings → Accessibility.',
+      [
+        {text: 'Open Accessibility Settings', onPress: openAccessibilitySettings},
+        {text: 'Cancel', style: 'cancel'},
+      ],
+    );
+  };
 
   const handleEnableBackgroundService = async () => {
     try {
@@ -87,24 +109,32 @@ const HomeScreen = ({navigation}) => {
         );
 
         // Auto-start streaming for AirDroid-style seamless remote access
-        if (request && !streaming && !startingStream) {
+        const captureActive = await isScreenCaptureActive();
+        if (!captureActive && (streaming || agoraService.isInChannel)) {
+          console.log('MediaProjection stopped by system. Cleaning up dead session...');
+          setStreaming(false);
+          await agoraService.leaveChannel().catch(() => {});
+        }
+
+        if (request && (!streaming || !captureActive) && !startingStream) {
           startStreaming(deviceId, request._id);
         }
 
-        // Handle remote control commands
-        const remoteCommands = sync.commands?.filter(cmd => 
-          ['REMOTE_TOUCH', 'REMOTE_ACTION'].includes(cmd.type) && cmd.status === 'pending'
+        // Handle remote control and screen stream commands
+        const remoteCommands = sync.commands?.filter(cmd =>
+          ['REMOTE_TOUCH', 'REMOTE_ACTION', 'SCREEN_STREAM_START', 'SCREEN_STREAM_STOP'].includes(cmd.type) && cmd.status === 'pending'
         ) || [];
         
         for (const cmd of remoteCommands) {
           await handleRemoteCommand(cmd);
         }
       } catch (syncError) {
-        console.warn('Heartbeat failed:', syncError);
+        console.warn('Heartbeat failed:', syncError?.message || syncError?.response?.status || syncError);
       }
     };
 
     checkForLiveRequest();
+    refreshAccessibilityStatus();
     const interval = setInterval(checkForLiveRequest, 3000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,6 +143,10 @@ const HomeScreen = ({navigation}) => {
   const handleAppStateChange = nextAppState => {
     // Persistent streaming: Do NOT leave channel when app goes to background or is minimized
     console.log('App state changed to:', nextAppState);
+    if (nextAppState === 'active') {
+      // User may have just toggled the accessibility service in Android Settings.
+      refreshAccessibilityStatus();
+    }
   };
 
   const loadUserData = async () => {
@@ -140,36 +174,54 @@ const HomeScreen = ({navigation}) => {
 
   const handleRemoteCommand = async (command) => {
     try {
-      const accEnabled = await isAccessibilityServiceEnabled();
-      if (!accEnabled) {
-        console.warn('Remote command received, but Accessibility service is not enabled on device.');
-        return;
-      }
-
       const {type, payload} = command;
-      
-      if (type === 'REMOTE_TOUCH') {
-        const {x, y, type: touchType} = payload;
-        if (touchType === 'tap') {
-          await remoteControl.tap(x, y);
-        } else if (touchType === 'longPress') {
-          await remoteControl.longPress(x, y);
+
+      if (type === 'SCREEN_STREAM_START') {
+        const accEnabled = await isAccessibilityServiceEnabled();
+        if (!accEnabled) {
+          console.warn('Screen stream command: Accessibility service not enabled, skipping.');
+          promptEnableAccessibility();
+        } else {
+          const fps = Number(payload?.fps) || 12;
+          console.log('Screen stream command: starting at', fps, 'fps for device', deviceId);
+          const started = await screenStream.start(deviceId, fps);
+          if (!started) {
+            console.warn('Screen stream command: screenStream.start() returned false');
+            Alert.alert('Screen Stream Failed', 'Could not start screen capture. Make sure the app was rebuilt with the latest native code and the device runs Android 11+.');
+          }
         }
-      } else if (type === 'REMOTE_ACTION') {
-        const {action} = payload;
-        switch (action) {
-          case 'home':
-            await remoteControl.pressHome();
-            break;
-          case 'back':
-            await remoteControl.pressBack();
-            break;
-          case 'recents':
-            await remoteControl.pressRecents();
-            break;
-          case 'notifications':
-            await remoteControl.openNotifications();
-            break;
+      } else if (type === 'SCREEN_STREAM_STOP') {
+        await screenStream.stop();
+      } else {
+        const accEnabled = await isAccessibilityServiceEnabled();
+        if (!accEnabled) {
+          console.warn('Remote command received, but Accessibility service is not enabled on device.');
+          return;
+        }
+
+        if (type === 'REMOTE_TOUCH') {
+          const {x, y, type: touchType} = payload;
+          if (touchType === 'tap') {
+            await remoteControl.tap(x, y);
+          } else if (touchType === 'longPress') {
+            await remoteControl.longPress(x, y);
+          }
+        } else if (type === 'REMOTE_ACTION') {
+          const {action} = payload;
+          switch (action) {
+            case 'home':
+              await remoteControl.pressHome();
+              break;
+            case 'back':
+              await remoteControl.pressBack();
+              break;
+            case 'recents':
+              await remoteControl.pressRecents();
+              break;
+            case 'notifications':
+              await remoteControl.openNotifications();
+              break;
+          }
         }
       }
 
@@ -185,11 +237,20 @@ const HomeScreen = ({navigation}) => {
 
   const startStreaming = async (id = deviceId, targetReqId = liveRequest?._id, isManual = false) => {
     try {
-      if (!id || startingStream || streaming) return;
+      if (!id || startingStream) return;
 
-      if (agoraService.isInChannel) {
+      const isCaptureValid = await isScreenCaptureActive();
+
+      if (agoraService.isInChannel && isCaptureValid) {
         setStreaming(true);
         return;
+      }
+
+      // If channel is open or stream was running but MediaProjection is dead, clean up first
+      if (agoraService.isInChannel || !isCaptureValid) {
+        console.log('Cleaning up dead channel session before re-joining...');
+        await agoraService.leaveChannel().catch(() => {});
+        setStreaming(false);
       }
 
       const now = Date.now();
@@ -211,8 +272,7 @@ const HomeScreen = ({navigation}) => {
       }
 
       // Check if screen capture is already active in background
-      const captureActive = await isScreenCaptureActive();
-      if (!captureActive) {
+      if (!isCaptureValid) {
         await requestScreenCapture().catch(() => {});
       }
 
@@ -341,6 +401,18 @@ const HomeScreen = ({navigation}) => {
             <Text style={styles.settingsButtonText}>Grant permanent permissions in Settings ⚙️</Text>
           </TouchableOpacity>
 
+          {/* Accessibility service status — required for See Screen & Remote Control */}
+          {accessibilityOn === false && (
+            <TouchableOpacity style={styles.accWarnButton} onPress={promptEnableAccessibility}>
+              <Text style={styles.accWarnButtonText}>
+                ⚠️ Accessibility OFF — tap to enable "FamilyGuard remote control"
+              </Text>
+            </TouchableOpacity>
+          )}
+          {accessibilityOn && (
+            <Text style={styles.accOkText}>✅ Accessibility service active (See Screen ready)</Text>
+          )}
+
           {/* Persistent Background Protection Button */}
           <TouchableOpacity
             style={[styles.bgServiceButton, serviceActive && styles.bgServiceButtonActive]}
@@ -467,6 +539,9 @@ const styles = StyleSheet.create({
   bgServiceButton: {backgroundColor: '#059669', borderRadius: 12, padding: 14, marginTop: 10, alignItems: 'center'},
   bgServiceButtonActive: {backgroundColor: '#10B981'},
   bgServiceButtonText: {color: '#fff', fontSize: 14, fontWeight: '700', textAlign: 'center'},
+  accWarnButton: {backgroundColor: '#DC2626', borderRadius: 12, padding: 14, marginTop: 10, alignItems: 'center'},
+  accWarnButtonText: {color: '#fff', fontSize: 13, fontWeight: '700', textAlign: 'center'},
+  accOkText: {color: '#059669', fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 10},
   policyText: {fontSize: 12, color: '#777', textAlign: 'center', lineHeight: 17, marginTop: 16},
 });
 

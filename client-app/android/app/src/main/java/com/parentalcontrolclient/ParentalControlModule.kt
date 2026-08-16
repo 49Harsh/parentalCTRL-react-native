@@ -13,6 +13,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class ParentalControlModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -160,6 +161,48 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
     }
     val success = service.executeGlobalAction(action)
     promise.resolve(success)
+  }
+
+  @ReactMethod
+  fun startScreenFrameStream(fps: Int, baseUrl: String, deviceId: String, token: String, promise: Promise) {
+    val service = RemoteControlService.instance
+    if (service == null) {
+      promise.reject("SERVICE_UNAVAILABLE", "Accessibility service is not enabled")
+      return
+    }
+    val started = service.startScreenshotStreaming(fps, baseUrl, deviceId, token)
+    if (!started) {
+      promise.reject("UNSUPPORTED", "Accessibility takeScreenshot requires Android 11 (API 30)+")
+      return
+    }
+    service.frameListener = { event, _, _, _, _, _, message ->
+      val params = com.facebook.react.bridge.Arguments.createMap().apply {
+        putString("event", event)
+        putString("message", message)
+      }
+      reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("ScreenFrameStream", params)
+    }
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun stopScreenFrameStream(promise: Promise) {
+    val service = RemoteControlService.instance
+    service?.frameListener = null
+    service?.stopScreenshotStreaming()
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun isScreenFrameStreaming(promise: Promise) {
+    promise.resolve(RemoteControlService.instance?.isScreenshotStreaming ?: false)
+  }
+
+  override fun invalidate() {
+    RemoteControlService.instance?.frameListener = null
+    RemoteControlService.instance?.stopScreenshotStreaming()
+    super.invalidate()
   }
 
   private fun openSettings(intent: Intent, promise: Promise) {

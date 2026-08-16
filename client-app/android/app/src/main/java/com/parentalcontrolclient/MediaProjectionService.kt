@@ -25,7 +25,17 @@ class MediaProjectionService : Service() {
     if (resultCode == Activity.RESULT_OK && data != null) {
       try {
         val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+        mediaProjection?.stop()
+        val projection = projectionManager.getMediaProjection(resultCode, data)
+        projection?.registerCallback(object : MediaProjection.Callback() {
+          override fun onStop() {
+            super.onStop()
+            if (mediaProjection == projection) {
+              mediaProjection = null
+            }
+          }
+        }, android.os.Handler(android.os.Looper.getMainLooper()))
+        mediaProjection = projection
       } catch (e: Exception) {
         e.printStackTrace()
       }
