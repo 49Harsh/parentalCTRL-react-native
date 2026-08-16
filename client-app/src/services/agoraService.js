@@ -3,7 +3,6 @@ import {
   ChannelProfileType,
   ClientRoleType,
 } from 'react-native-agora';
-import {Platform} from 'react-native';
 
 // The token response is authoritative; configure this per build and never commit a certificate.
 const AGORA_APP_ID = '';
@@ -84,28 +83,12 @@ class AgoraService {
         return;
       }
 
-      // Enable screen capture for AirDroid-style background persistence
-      try {
-        if (Platform.OS === 'android') {
-          this.engine.startScreenCapture({
-            captureVideo: true,
-            captureAudio: true,
-            videoCaptureParameters: {
-              dimensions: {width: 720, height: 1280},
-              frameRate: 15,
-              bitrate: 0,
-            },
-          });
-        }
-      } catch (scErr) {
-        console.warn('Screen capture start warning:', scErr);
-      }
-
-      // Join channel with screen & camera publishing enabled
+      // Join channel with camera + microphone publishing.
+      // startPreview() is intentionally NOT called — we don't want the child's
+      // screen to show a camera preview. Agora publishes the camera track
+      // automatically when publishCameraTrack is true.
       await this.engine.joinChannel(token, channelName, 0, {
         clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-        publishScreenCaptureVideo: true,
-        publishScreenCaptureAudio: true,
         publishCameraTrack: true,
         publishMicrophoneTrack: true,
       });
@@ -120,33 +103,10 @@ class AgoraService {
       }
 
       this.isInChannel = true;
-      console.log(`Joined channel: ${channelName}`);
+      console.log(`Joined channel: ${channelName} (camera + mic publishing)`);
     } catch (error) {
       console.error('Failed to join channel:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Restart screen capture stream on media projection re-acquisition
-   */
-  restartScreenCapture() {
-    try {
-      if (this.engine && Platform.OS === 'android') {
-        this.engine.stopScreenCapture();
-        this.engine.startScreenCapture({
-          captureVideo: true,
-          captureAudio: true,
-          videoCaptureParameters: {
-            dimensions: {width: 720, height: 1280},
-            frameRate: 15,
-            bitrate: 0,
-          },
-        });
-        console.log('Agora screen capture restarted successfully');
-      }
-    } catch (e) {
-      console.warn('Restart screen capture warning:', e);
     }
   }
 

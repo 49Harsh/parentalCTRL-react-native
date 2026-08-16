@@ -3,7 +3,6 @@ import {BrowserRouter, Navigate, Route, Routes} from 'react-router-dom';
 import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import DeviceDetail from './pages/DeviceDetail';
-import LiveStreamView from './pages/LiveStreamView';
 import RemoteControl from './pages/RemoteControl';
 import ScreenView from './pages/ScreenView';
 import CameraView from './pages/CameraView';
@@ -19,7 +18,6 @@ export default function App() {
     <Route path="/auth" element={user ? <Navigate to="/"/> : <Auth onAuthenticated={setUser}/>} />
     <Route path="/" element={user ? <Dashboard user={user} onLogout={signOut}/> : <Navigate to="/auth"/>} />
     <Route path="/devices/:deviceId" element={user ? <DeviceDetail/> : <Navigate to="/auth"/>} />
-    <Route path="/stream/:uniqueId" element={user ? <LiveStreamView/> : <Navigate to="/auth"/>} />
     <Route path="/remote/:uniqueId" element={user ? <RemoteControl/> : <Navigate to="/auth"/>} />
     <Route path="/screen/:deviceId" element={user ? <ScreenView/> : <Navigate to="/auth"/>} />
     <Route path="/camera/:deviceId" element={user ? <CameraView/> : <Navigate to="/auth"/>} />

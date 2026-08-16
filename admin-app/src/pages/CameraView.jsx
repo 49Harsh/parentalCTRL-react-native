@@ -78,9 +78,12 @@ function CameraView() {
       if (cancelled || !tokenData.success) throw new Error(tokenData.message || 'Token failed');
       setConnectionState('Connecting to Agora...');
 
-      // Dynamic import of Agora Web SDK
       const AgoraRTC = await import('agora-rtc-sdk-ng').then(m => m.default);
-      agoraEngine = new AgoraRTC.createClient({mode: 'rtc', codec: 'vp8'});
+      // Suppress Agora's internal telemetry so ad-blockers don't spam the
+      // console with ERR_BLOCKED_BY_CLIENT on statscollector URLs.
+      AgoraRTC.setLogLevel && AgoraRTC.setLogLevel(0);
+      agoraEngine = AgoraRTC.createClient({mode: 'live', codec: 'vp8'});
+      agoraEngine.setClientRole('audience');
 
       agoraEngine.on('user-published', async (user, mediaType) => {
         await agoraEngine.subscribe(user, mediaType);
@@ -95,11 +98,14 @@ function CameraView() {
         }
       });
 
-      agoraEngine.on('user-unpublished', user => {
-        if (user.uid) {
-          setConnected(false);
-          setConnectionState('Stream ended');
-        }
+      agoraEngine.on('user-unpublished', () => {
+        setConnected(false);
+        setConnectionState('Stream paused…');
+      });
+
+      agoraEngine.on('user-left', () => {
+        setConnected(false);
+        setConnectionState('Device left the channel');
       });
 
       await agoraEngine.join(tokenData.appId, tokenData.channel, tokenData.token, null);

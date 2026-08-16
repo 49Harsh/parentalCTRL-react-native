@@ -65,6 +65,7 @@ export default function MicView() {
       setConnectionState('Connecting to audio channel…');
 
       const AgoraRTC = await import('agora-rtc-sdk-ng').then(m => m.default);
+      AgoraRTC.setLogLevel && AgoraRTC.setLogLevel(0);
       const engine = AgoraRTC.createClient({mode: 'live', codec: 'vp8'});
       engine.setClientRole('audience');
       engineRef.current = engine;
