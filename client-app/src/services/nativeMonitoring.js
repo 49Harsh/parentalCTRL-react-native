@@ -34,6 +34,29 @@ export const stopMonitoringService =
     ? () => native.stopMonitoringService()
     : unavailable;
 
+/**
+ * Start the native background command service with credentials.
+ * This enables heartbeat polling, screen capture commands, and native
+ * Agora camera/mic streaming — all running natively without needing
+ * the JS thread active.
+ */
+export const startBackgroundCommands =
+  Platform.OS === 'android' && native?.startBackgroundCommands
+    ? (baseUrl, deviceId, token) => native.startBackgroundCommands(baseUrl, deviceId, token)
+    : unavailable;
+
+/** Push updated credentials to the running MonitoringService. */
+export const updateBackgroundConfig =
+  Platform.OS === 'android' && native?.updateBackgroundConfig
+    ? (baseUrl, deviceId, token) => native.updateBackgroundConfig(baseUrl, deviceId, token)
+    : unavailable;
+
+/** Check whether native Agora camera/mic streaming is active. */
+export const isNativeStreaming =
+  Platform.OS === 'android' && native?.isNativeStreaming
+    ? () => native.isNativeStreaming()
+    : () => Promise.resolve(false);
+
 export const requestScreenCapture =
   Platform.OS === 'android' && native
     ? () => native.requestScreenCapture()
@@ -53,4 +76,3 @@ export const openAccessibilitySettings =
   Platform.OS === 'android' && native
     ? () => native.openAccessibilitySettings()
     : unavailable;
-

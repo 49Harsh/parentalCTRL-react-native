@@ -68,6 +68,67 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  /**
+   * Start the background command service with full credentials so it can
+   * poll heartbeat, process SCREEN_STREAM commands, and start Agora natively
+   * — all without the JS thread being active.
+   */
+  @ReactMethod
+  fun startBackgroundCommands(baseUrl: String, deviceId: String, token: String, promise: Promise) {
+    try {
+      reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .edit().putBoolean(MONITORING_ENABLED, true).apply()
+
+      // Let the service emit DeviceEventEmitter events back to JS.
+      MonitoringService.reactContext = reactContext
+
+      val intent = Intent(reactContext, MonitoringService::class.java).apply {
+        action = MonitoringService.ACTION_START
+        putExtra("baseUrl", baseUrl)
+        putExtra("deviceId", deviceId)
+        putExtra("token", token)
+      }
+      ContextCompat.startForegroundService(reactContext, intent)
+      promise.resolve(true)
+    } catch (e: Exception) {
+      e.printStackTrace()
+      promise.resolve(false)
+    }
+  }
+
+  /**
+   * Push updated credentials to an already-running MonitoringService
+   * (e.g. after a fresh login or token refresh).
+   */
+  @ReactMethod
+  fun updateBackgroundConfig(baseUrl: String, deviceId: String, token: String, promise: Promise) {
+    try {
+      val svc = MonitoringService.instance
+      if (svc != null) {
+        svc.updateConfig(baseUrl, deviceId, token)
+      } else {
+        // Service not running — save to prefs so it picks them up on next start.
+        reactContext.getSharedPreferences("family_guard_bg", Context.MODE_PRIVATE).edit().apply {
+          putString("baseUrl", baseUrl)
+          putString("deviceId", deviceId)
+          putString("authToken", token)
+          apply()
+        }
+      }
+      promise.resolve(true)
+    } catch (e: Exception) {
+      e.printStackTrace()
+      promise.resolve(false)
+    }
+  }
+
+  /** Check whether the native MonitoringService is actively streaming via Agora. */
+  @ReactMethod
+  fun isNativeStreaming(promise: Promise) {
+    val svc = MonitoringService.instance
+    promise.resolve(svc?.isAgoraStreaming == true)
+  }
+
   @ReactMethod
   fun stopMonitoringService(promise: Promise) {
     reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -202,6 +263,7 @@ class ParentalControlModule(private val reactContext: ReactApplicationContext) :
   override fun invalidate() {
     RemoteControlService.instance?.frameListener = null
     RemoteControlService.instance?.stopScreenshotStreaming()
+    MonitoringService.reactContext = null
     super.invalidate()
   }
 

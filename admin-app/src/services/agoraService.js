@@ -1,5 +1,11 @@
 import AgoraRTC from 'agora-rtc-sdk-ng';
 
+// Suppress Agora's internal telemetry so ad-blockers don't spam the
+// console with ERR_BLOCKED_BY_CLIENT on statscollector URLs.
+if (AgoraRTC.setLogLevel) {
+  AgoraRTC.setLogLevel(0);
+}
+
 class AgoraService {
   constructor() {
     this.client = null;

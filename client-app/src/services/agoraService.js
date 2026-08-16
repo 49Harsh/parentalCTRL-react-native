@@ -119,10 +119,8 @@ class AgoraService {
         return;
       }
 
-      // Stop preview
-      this.engine.stopPreview();
-
-      // Leave channel
+      // Leave channel (stopPreview is intentionally omitted — we never called
+      // startPreview, and the native MonitoringService handles its own lifecycle)
       await this.engine.leaveChannel();
 
       this.isInChannel = false;
