@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {getDevice, getAdminToken, sendCommand, getCommand} from '../services/api';
+import {getDevice, getAdminToken, sendCommand, getCommand, endLiveSession} from '../services/api';
 
 export default function MicView() {
   const {deviceId} = useParams();
@@ -114,6 +114,7 @@ export default function MicView() {
       window.clearTimeout(retryTimer);
       window.clearTimeout(rafTimer);
       if (engineRef.current) engineRef.current.leave().catch(() => {});
+      endLiveSession(deviceId);
     };
     // Stream lifecycle is tied to the route param only.
     // eslint-disable-next-line react-hooks/exhaustive-deps

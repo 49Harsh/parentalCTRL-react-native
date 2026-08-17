@@ -29,6 +29,7 @@ export const getUsage = id => api.get(`/api/devices/${id}/usage`).then(r => r.da
 export const getNotifications = id => api.get(`/api/devices/${id}/notifications`).then(r => r.data);
 export const verifyUniqueId = id => api.get(`/api/stream/verify/${id}`).then(r => r.data);
 export const getAdminToken = id => api.get(`/api/stream/token/admin/${id}`).then(r => r.data);
+export const endLiveSession = id => api.post(`/api/devices/${id}/live-session/end`).then(r => r.data).catch(() => {});
 export const grantPersistentAccess = id => api.post(`/api/devices/${id}/persistent-access/grant`).then(r => r.data);
 export const revokePersistentAccess = id => api.post(`/api/devices/${id}/persistent-access/revoke`).then(r => r.data);
 export const startScreenStreamCommand = (id, fps = 12) => api.post(`/api/devices/${id}/commands`, {type: 'SCREEN_STREAM_START', payload: {fps}}).then(r => r.data);

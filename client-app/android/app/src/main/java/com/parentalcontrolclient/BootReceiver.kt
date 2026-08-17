@@ -7,7 +7,9 @@ import androidx.core.content.ContextCompat
 
 class BootReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
-    if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+    val isRelevant = intent.action == Intent.ACTION_BOOT_COMPLETED ||
+      intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
+    if (!isRelevant) return
     val enabled = context.getSharedPreferences("family_guard", Context.MODE_PRIVATE)
       .getBoolean("monitoring_service_enabled", false)
     if (enabled) {

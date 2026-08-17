@@ -11,6 +11,7 @@ router.patch('/:deviceId', controller.update);
 router.delete('/:deviceId', controller.revoke);
 router.post('/:deviceId/heartbeat', controller.heartbeat);
 router.post('/:deviceId/live-session/approve', controller.approveLiveSession);
+router.post('/:deviceId/live-session/end', controller.endLiveSession);
 router.put('/:deviceId/policy', controller.updatePolicy);
 router.get('/:deviceId/commands', controller.listCommands);
 router.get('/:deviceId/commands/:commandId', controller.getCommand);

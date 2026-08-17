@@ -189,6 +189,24 @@ exports.approveLiveSession = async (req, res) => {
   res.json({success: true, device, command});
 };
 
+/**
+ * Mark any active (accepted) LIVE_SESSION_REQUEST as 'completed' so the
+ * client-side MonitoringService sees activeLiveRequest = null and stops
+ * publishing camera/mic via Agora. Called when the admin navigates away
+ * from CameraView / MicView.
+ */
+exports.endLiveSession = async (req, res) => {
+  const device = await findAccessible(req, res);
+  if (!device) return;
+
+  const result = await Command.updateMany(
+    {device: device._id, type: 'LIVE_SESSION_REQUEST', status: 'accepted', expiresAt: {$gt: new Date()}},
+    {$set: {status: 'completed'}},
+  );
+
+  res.json({success: true, ended: result.modifiedCount});
+};
+
 exports.updatePolicy = async (req, res) => {
   const device = await findOwned(req, res);
   if (!device) return;

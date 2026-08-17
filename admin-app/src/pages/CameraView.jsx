@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {getDevice, getAdminToken, sendCommand, getCommand} from '../services/api';
+import {getDevice, getAdminToken, sendCommand, getCommand, endLiveSession} from '../services/api';
 
 function CameraView() {
   const {deviceId} = useParams();
@@ -119,6 +119,7 @@ function CameraView() {
       cancelled = true;
       window.clearTimeout(retryTimer);
       if (agoraEngine) agoraEngine.leave().catch(() => {});
+      endLiveSession(deviceId);
     };
   }, [deviceId]);
 
