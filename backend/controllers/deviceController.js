@@ -6,6 +6,7 @@ const Command = require('../models/Command');
 const LocationEvent = require('../models/LocationEvent');
 const UsageSnapshot = require('../models/UsageSnapshot');
 const NotificationEvent = require('../models/NotificationEvent');
+const CallEvent = require('../models/CallEvent');
 
 const makeId = () => crypto.randomBytes(8).toString('base64url').replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase();
 
@@ -343,6 +344,50 @@ exports.listNotifications = async (req, res) => {
     .sort({postedAt: -1})
     .limit(100);
   res.json({success: true, notifications});
+};
+
+// ── Call logs ─────────────────────────────────────────────────────────────
+
+exports.addCallLogs = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+  const events = Array.isArray(req.body.events) ? req.body.events.slice(0, 50) : [];
+  if (!events.length) return res.status(400).json({success: false, message: 'Call events are required'});
+
+  const validTypes = ['incoming', 'outgoing', 'missed', 'unknown'];
+  const clean = events
+    .map(event => ({
+      device: device._id,
+      number: String(event.number || '').slice(0, 40),
+      name: String(event.name || '').slice(0, 120),
+      type: validTypes.includes(event.type) ? event.type : 'unknown',
+      duration: Math.max(0, Number(event.duration) || 0),
+      occurredAt: new Date(event.timestamp || event.occurredAt),
+    }))
+    .filter(event => !Number.isNaN(event.occurredAt.getTime()));
+
+  if (!clean.length) return res.status(400).json({success: false, message: 'No valid call events supplied'});
+
+  // The client re-reads the last call after every phone-state IDLE, so the same
+  // call can arrive twice — skip ones already stored (same number+time+type).
+  const seen = await CallEvent.find({
+    device: device._id,
+    occurredAt: {$in: clean.map(event => event.occurredAt)},
+  }).select('number occurredAt type').lean();
+  const existingKeys = new Set(seen.map(event => `${event.number}|${event.occurredAt.getTime()}|${event.type}`));
+  const fresh = clean.filter(event => !existingKeys.has(`${event.number}|${event.occurredAt.getTime()}|${event.type}`));
+
+  if (fresh.length) await CallEvent.insertMany(fresh, {ordered: false});
+  res.status(201).json({success: true, accepted: fresh.length});
+};
+
+exports.listCallLogs = async (req, res) => {
+  const device = await findOwned(req, res);
+  if (!device) return;
+  const calls = await CallEvent.find({device: device._id})
+    .sort({occurredAt: -1})
+    .limit(100);
+  res.json({success: true, calls});
 };
 
 // Grant persistent remote access (one-time setup)

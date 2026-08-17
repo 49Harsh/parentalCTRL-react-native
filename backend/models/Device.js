@@ -11,6 +11,10 @@ const deviceSchema = new mongoose.Schema({
   lastSeenAt: Date,
   status: {
     batteryLevel: {type: Number, min: 0, max: 100},
+    charging: {type: Boolean, default: false},
+    batteryHealth: {type: String, default: 'unknown'},
+    batteryTemperature: {type: Number, min: 0},
+    batteryVoltage: {type: Number, min: 0},
     networkType: String,
     appVersion: String,
     permissions: {type: Map, of: Boolean},

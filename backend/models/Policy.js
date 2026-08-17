@@ -9,7 +9,7 @@ const policySchema = new mongoose.Schema({
     end: {type: String, default: '07:00'},
   },
   appLimits: [{packageName: String, label: String, minutes: {type: Number, min: 0, max: 1440}}],
-  locationSharing: {type: Boolean, default: false},
+  locationSharing: {type: Boolean, default: true},
   usageSharing: {type: Boolean, default: false},
   allowedCommands: [{type: String, enum: ['STATUS_REFRESH', 'RING', 'LOCATION_REFRESH', 'LIVE_SESSION_REQUEST', 'REMOTE_TOUCH', 'REMOTE_ACTION', 'SYNC_POLICY', 'END_SESSION']}],
 }, {timestamps: true});

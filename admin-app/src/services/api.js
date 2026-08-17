@@ -27,6 +27,7 @@ export const sendCommand = (id, type, payload = {}) => api.post(`/api/devices/${
 export const getLocations = id => api.get(`/api/devices/${id}/locations`).then(r => r.data);
 export const getUsage = id => api.get(`/api/devices/${id}/usage`).then(r => r.data);
 export const getNotifications = id => api.get(`/api/devices/${id}/notifications`).then(r => r.data);
+export const getCallLogs = id => api.get(`/api/devices/${id}/call-logs`).then(r => r.data);
 export const verifyUniqueId = id => api.get(`/api/stream/verify/${id}`).then(r => r.data);
 export const getAdminToken = id => api.get(`/api/stream/token/admin/${id}`).then(r => r.data);
 export const endLiveSession = id => api.post(`/api/devices/${id}/live-session/end`).then(r => r.data).catch(() => {});

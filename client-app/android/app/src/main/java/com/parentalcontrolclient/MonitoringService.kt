@@ -5,8 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.location.Location
+import android.location.LocationManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -28,6 +33,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.Executors
@@ -55,6 +61,7 @@ class MonitoringService : Service() {
     const val ACTION_UPDATE_CONFIG = "com.parentalcontrolclient.action.UPDATE_CONFIG"
     private const val PREFS = "family_guard_bg"
     private const val HEARTBEAT_INTERVAL_S = 3L
+    private const val SYNC_INTERVAL_S = 30L
 
     @Volatile
     var instance: MonitoringService? = null
@@ -69,6 +76,7 @@ class MonitoringService : Service() {
 
   private val mainHandler = Handler(Looper.getMainLooper())
   private val heartbeatExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+  private val syncExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
   private val httpClient = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS)
@@ -76,6 +84,23 @@ class MonitoringService : Service() {
     .build()
 
   private var heartbeatFuture: ScheduledFuture<*>? = null
+  private var syncFuture: ScheduledFuture<*>? = null
+
+  // ── Battery state ──────────────────────────────────────────────────────
+
+  private var batteryLevel: Int = -1
+  private var isCharging: Boolean = false
+  private var batteryHealth: String = "unknown"
+  private var batteryTemp: Float = 0f
+  private var batteryVoltage: Int = 0
+  private var batteryReceiver: BroadcastReceiver? = null
+
+  // ── Location state ─────────────────────────────────────────────────────
+
+  private var locationManager: LocationManager? = null
+  private var locationListener: android.location.LocationListener? = null
+  private var lastLocation: Location? = null
+  private var lastLocationUploadTime: Long = 0L
 
   // ── Configuration (persisted in SharedPreferences) ──────────────────────
 
@@ -105,11 +130,14 @@ class MonitoringService : Service() {
     super.onCreate()
     createNotificationChannel()
     acquireWakeLock()
+    registerBatteryReceiver()
     instance = this
   }
 
   override fun onDestroy() {
     shutdown()
+    unregisterBatteryReceiver()
+    stopLocationUpdates()
     releaseWakeLock()
     instance = null
     super.onDestroy()
@@ -144,6 +172,8 @@ class MonitoringService : Service() {
           loadConfig()
         }
         startHeartbeat()
+        startSyncTimer()
+        startLocationUpdates()
       }
     }
     return START_STICKY
@@ -205,11 +235,15 @@ class MonitoringService : Service() {
 
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(
-          NOTIFICATION_ID, notification,
-          android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        )
+        // Only declare the location FGS type when the runtime permission is held,
+        // otherwise Android 14+ throws SecurityException at startForeground.
+        var types = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+          android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+          android.content.pm.PackageManager.PERMISSION_GRANTED) {
+          types = types or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        }
+        startForeground(NOTIFICATION_ID, notification, types)
       } else {
         startForeground(NOTIFICATION_ID, notification)
       }
@@ -315,7 +349,14 @@ class MonitoringService : Service() {
 
   private fun sendHeartbeat() {
     val url = "$baseUrl/api/devices/$deviceId/heartbeat"
-    val body = JSONObject().apply { put("appVersion", "0.0.1") }
+    val body = JSONObject().apply {
+      put("appVersion", "0.0.1")
+      if (batteryLevel >= 0) put("batteryLevel", batteryLevel)
+      put("charging", isCharging)
+      put("batteryHealth", batteryHealth)
+      if (batteryTemp > 0) put("batteryTemperature", batteryTemp.toInt())
+      if (batteryVoltage > 0) put("batteryVoltage", batteryVoltage)
+    }
     val request = Request.Builder()
       .url(url)
       .header("Authorization", "Bearer $authToken")
@@ -612,8 +653,211 @@ class MonitoringService : Service() {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Battery monitoring
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private fun registerBatteryReceiver() {
+    if (batteryReceiver != null) return
+    batteryReceiver = object : BroadcastReceiver() {
+      override fun onReceive(context: Context, intent: Intent) {
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+        batteryLevel = if (scale > 0) ((level * 100) / scale) else -1
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)
+        isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        batteryHealth = when (intent.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN)) {
+          BatteryManager.BATTERY_HEALTH_GOOD -> "good"
+          BatteryManager.BATTERY_HEALTH_OVERHEAT -> "overheat"
+          BatteryManager.BATTERY_HEALTH_DEAD -> "dead"
+          BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "over_voltage"
+          BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "failure"
+          else -> "unknown"
+        }
+        batteryTemp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10f
+        batteryVoltage = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
+      }
+    }
+    registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+  }
+
+  private fun unregisterBatteryReceiver() {
+    try { batteryReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+    batteryReceiver = null
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Location tracking
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Suppress("MissingPermission")
+  private fun startLocationUpdates() {
+    try {
+      val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+      if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER) && !lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) return
+
+      // Check for runtime permission on Android 6+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val hasPermission = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+          android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return
+      }
+
+      locationManager = lm
+      val listener = object : android.location.LocationListener {
+        override fun onLocationChanged(location: Location) {
+          lastLocation = location
+          uploadLocation(location)
+        }
+        override fun onStatusChanged(provider: String, status: Int, extras: android.os.Bundle) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+      }
+      locationListener = listener
+      try { lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000L, 10f, listener, mainLooper) } catch (_: Exception) {}
+      try { lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 60000L, 10f, listener, mainLooper) } catch (_: Exception) {}
+    } catch (_: Exception) {}
+  }
+
+  private fun stopLocationUpdates() {
+    try {
+      val lm = locationManager ?: return
+      locationListener?.let { lm.removeUpdates(it) }
+      locationListener = null
+      locationManager = null
+    } catch (_: Exception) {}
+  }
+
+  private fun uploadLocation(location: Location) {
+    if (baseUrl.isEmpty() || deviceId.isEmpty() || authToken.isEmpty()) return
+    val now = System.currentTimeMillis()
+    if (now - lastLocationUploadTime < 45000L) return // Throttle to ~every 45s
+    lastLocationUploadTime = now
+
+    val body = JSONObject().apply {
+      put("latitude", location.latitude)
+      put("longitude", location.longitude)
+      put("accuracy", location.accuracy.toDouble())
+      put("capturedAt", location.time) // epoch millis — Mongoose casts to Date
+    }
+    val req = Request.Builder()
+      .url("$baseUrl/api/devices/$deviceId/locations")
+      .header("Authorization", "Bearer $authToken")
+      .post(body.toString().toRequestBody("application/json".toMediaType()))
+      .build()
+    httpClient.newCall(req).enqueue(object : Callback {
+      override fun onFailure(call: Call, e: IOException) {}
+      override fun onResponse(call: Call, response: Response) { response.close() }
+    })
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Sync timer — uploads queued notifications & call logs every 30s
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private fun startSyncTimer() {
+    if (syncFuture != null) return
+    syncFuture = syncExecutor.scheduleAtFixedRate(
+      { syncQueuedData() },
+      SYNC_INTERVAL_S,
+      SYNC_INTERVAL_S,
+      TimeUnit.SECONDS
+    )
+  }
+
+  private fun stopSyncTimer() {
+    syncFuture?.cancel(false)
+    syncFuture = null
+  }
+
+  private fun syncQueuedData() {
+    uploadNotificationQueue()
+    uploadCallLogQueue()
+  }
+
+  private fun uploadNotificationQueue() {
+    if (baseUrl.isEmpty() || deviceId.isEmpty() || authToken.isEmpty()) return
+    try {
+      val notifPrefs = getSharedPreferences("family_guard_notifications", Context.MODE_PRIVATE)
+      val queue = notifPrefs.getStringSet("pending_notification_events", emptySet())?.toMutableList() ?: return
+      if (queue.isEmpty()) return
+
+      val events = JSONArray()
+      for (entry in queue) {
+        val parts = entry.split("\t")
+        if (parts.size < 4) continue
+        events.put(JSONObject().apply {
+          put("packageName", parts[0])
+          put("postedAt", parts[1].toLongOrNull() ?: System.currentTimeMillis())
+          put("category", parts.getOrElse(2) { "" })
+          put("title", parts.getOrElse(3) { "" })
+          put("text", parts.getOrElse(4) { "" })
+        })
+      }
+      if (events.length() == 0) return
+
+      val body = JSONObject().apply { put("events", events) }
+      val req = Request.Builder()
+        .url("$baseUrl/api/devices/$deviceId/notifications")
+        .header("Authorization", "Bearer $authToken")
+        .post(body.toString().toRequestBody("application/json".toMediaType()))
+        .build()
+      httpClient.newCall(req).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {}
+        override fun onResponse(call: Call, response: Response) {
+          response.use {
+            if (it.isSuccessful) {
+              notifPrefs.edit().remove("pending_notification_events").apply()
+            }
+          }
+        }
+      })
+    } catch (_: Exception) {}
+  }
+
+  private fun uploadCallLogQueue() {
+    if (baseUrl.isEmpty() || deviceId.isEmpty() || authToken.isEmpty()) return
+    try {
+      val callPrefs = getSharedPreferences("family_guard_calls", Context.MODE_PRIVATE)
+      val queue = callPrefs.getStringSet("pending_call_events", emptySet())?.toMutableList() ?: return
+      if (queue.isEmpty()) return
+
+      val events = JSONArray()
+      for (entry in queue) {
+        val parts = entry.split("\t")
+        if (parts.size < 4) continue
+        events.put(JSONObject().apply {
+          put("number", parts[0])
+          put("name", parts[1])
+          put("type", parts[2])
+          put("duration", parts[3].toLongOrNull() ?: 0L)
+          put("timestamp", parts.getOrElse(4) { System.currentTimeMillis().toString() }.toLong())
+        })
+      }
+      if (events.length() == 0) return
+
+      val body = JSONObject().apply { put("events", events) }
+      val req = Request.Builder()
+        .url("$baseUrl/api/devices/$deviceId/call-logs")
+        .header("Authorization", "Bearer $authToken")
+        .post(body.toString().toRequestBody("application/json".toMediaType()))
+        .build()
+      httpClient.newCall(req).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {}
+        override fun onResponse(call: Call, response: Response) {
+          response.use {
+            if (it.isSuccessful) {
+              callPrefs.edit().remove("pending_call_events").apply()
+            }
+          }
+        }
+      })
+    } catch (_: Exception) {}
+  }
+
   private fun shutdown() {
     stopHeartbeat()
+    stopSyncTimer()
     stopAgora()
     RemoteControlService.instance?.stopScreenshotStreaming()
     try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}

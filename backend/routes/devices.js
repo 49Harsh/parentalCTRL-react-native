@@ -22,6 +22,8 @@ router.get('/:deviceId/usage', controller.listUsage);
 router.post('/:deviceId/usage', controller.addUsage);
 router.get('/:deviceId/notifications', controller.listNotifications);
 router.post('/:deviceId/notifications', controller.addNotifications);
+router.get('/:deviceId/call-logs', controller.listCallLogs);
+router.post('/:deviceId/call-logs', controller.addCallLogs);
 router.post('/:deviceId/persistent-access/grant', controller.grantPersistentAccess);
 router.post('/:deviceId/persistent-access/revoke', controller.revokePersistentAccess);
 router.post('/persistent-access/validate', controller.validatePersistentAccess);

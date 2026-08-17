@@ -13,7 +13,21 @@ export const requestPermissions = async () => {
     const permissions = [
       PermissionsAndroid.PERMISSIONS.CAMERA,
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
     ];
+
+    // Call-log / phone-state permissions are dangerous-level and must be
+    // granted at runtime for call monitoring to work.
+    if (PermissionsAndroid.PERMISSIONS.READ_CALL_LOG) {
+      permissions.push(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
+    }
+    if (PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE) {
+      permissions.push(PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE);
+    }
+    if (PermissionsAndroid.PERMISSIONS.READ_CONTACTS) {
+      permissions.push(PermissionsAndroid.PERMISSIONS.READ_CONTACTS);
+    }
 
     // Request Android 13+ notification permission if available
     if (Platform.Version >= 33) {
@@ -22,12 +36,33 @@ export const requestPermissions = async () => {
 
     const results = await PermissionsAndroid.requestMultiple(permissions);
 
-    const allGranted = Object.values(results).every(
-      result => result === PermissionsAndroid.RESULTS.GRANTED,
-    );
+    // Android 11+ auto-denies background location if requested together with
+    // fine location — it must be a separate follow-up request.
+    if (Platform.Version >= 30 && PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION) {
+      try {
+        await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+          {
+            title: 'Background Location',
+            message:
+              'Allow location access "All the time" so the device location stays available to the admin even when this app is closed.',
+            buttonPositive: 'OK',
+            buttonNegative: 'Not now',
+          },
+        );
+      } catch (bgErr) {
+        console.warn('Background location request skipped:', bgErr);
+      }
+    }
 
-    if (allGranted) {
-      console.log('All permissions granted');
+    // Location & call logs are optional add-ons — treat camera/mic as the
+    // core requirement and never hard-fail because of the new ones.
+    const coreGranted =
+      results[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED &&
+      results[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
+
+    if (coreGranted) {
+      console.log('Core permissions granted');
       return true;
     } else {
       console.log('Some permissions denied:', results);
